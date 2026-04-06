@@ -1,0 +1,12 @@
+# Build output
+bin/
+dist/
+out/
+
+# Local runtime state
+.env
+.cache/
+.tmp/
+
+# Editor / OS noise
+.DS_Store
