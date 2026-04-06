@@ -34,11 +34,13 @@ import pocketbridge.v1.Bridge.ClipboardValue
 import pocketbridge.v1.Bridge.DeviceHello
 import pocketbridge.v1.Bridge.Envelope
 import pocketbridge.v1.Bridge.NotifyPush
+import pocketbridge.v1.Bridge.PushTokenUpdate
 import pocketbridge.v1.Bridge.TaskStatus
 import top.miceworld.pocketbridge.BridgeConfig
 import top.miceworld.pocketbridge.BridgePrefs
 import top.miceworld.pocketbridge.BridgeRuntime
 import top.miceworld.pocketbridge.NotificationHelper
+import top.miceworld.pocketbridge.PushBridge
 import java.util.concurrent.TimeUnit
 
 class BridgeService : Service() {
@@ -67,6 +69,7 @@ class BridgeService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> stopBridge()
+            ACTION_RESTART -> restartBridge()
             ACTION_SEND_NOTIFY -> sendNotify(
                 target = intent.getStringExtra(EXTRA_TARGET).orEmpty(),
                 title = intent.getStringExtra(EXTRA_TITLE).orEmpty(),
@@ -94,6 +97,7 @@ class BridgeService : Service() {
     private fun startBridge() {
         val config = BridgePrefs.load(this)
         currentConfig = config
+        PushBridge.fetchAndStoreToken(this)
         if (running) {
             BridgeRuntime.appendLog("服务已在运行")
             return
@@ -114,7 +118,16 @@ class BridgeService : Service() {
         }
     }
 
+    private fun restartBridge() {
+        shutdownBridge(stopService = false)
+        startBridge()
+    }
+
     private fun stopBridge() {
+        shutdownBridge(stopService = true)
+    }
+
+    private fun shutdownBridge(stopService: Boolean) {
         running = false
         authenticated = false
         loopJob?.cancel()
@@ -127,7 +140,9 @@ class BridgeService : Service() {
             relayUrl = currentConfig?.relayUrl.orEmpty(),
         )
         stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        if (stopService) {
+            stopSelf()
+        }
     }
 
     private suspend fun connectLoop(config: BridgeConfig) {
@@ -255,6 +270,30 @@ class BridgeService : Service() {
         return socket?.send(okio.ByteString.of(*env.toByteArray())) == true
     }
 
+    private fun syncPushToken(config: BridgeConfig) {
+        PushBridge.fetchAndStoreToken(this) { token ->
+            val env = Envelope.newBuilder()
+                .setId(nextId())
+                .setFromDeviceId(config.deviceId)
+                .setUnixMs(System.currentTimeMillis())
+                .setPushTokenUpdate(
+                    PushTokenUpdate.newBuilder()
+                        .setProvider(PushBridge.PROVIDER_FCM)
+                        .setToken(token)
+                        .setPlatform("android")
+                        .setPackageName(packageName)
+                        .build(),
+                )
+                .build()
+            val ok = sendAuthenticatedEnvelope(env)
+            if (ok) {
+                BridgeRuntime.appendLog("已向 relay 同步 FCM token")
+            } else {
+                BridgeRuntime.appendLog("同步 FCM token 失败：当前未完成 relay 认证")
+            }
+        }
+    }
+
     private inner class BridgeSocketListener(
         private val config: BridgeConfig,
     ) : WebSocketListener() {
@@ -312,6 +351,7 @@ class BridgeService : Service() {
                                 NotificationHelper.SERVICE_NOTIFICATION_ID,
                                 NotificationHelper.buildServiceNotification(this@BridgeService, connected = true),
                             )
+                            syncPushToken(config)
                         }
                     }
                     Envelope.PayloadCase.NOTIFY_PUSH -> {
@@ -457,6 +497,7 @@ class BridgeService : Service() {
     companion object {
         private const val ALGORITHM_ED25519 = "ed25519"
         private const val ACTION_START = "top.miceworld.pocketbridge.action.START"
+        private const val ACTION_RESTART = "top.miceworld.pocketbridge.action.RESTART"
         private const val ACTION_STOP = "top.miceworld.pocketbridge.action.STOP"
         private const val ACTION_SEND_NOTIFY = "top.miceworld.pocketbridge.action.SEND_NOTIFY"
         private const val ACTION_PUSH_CLIPBOARD = "top.miceworld.pocketbridge.action.PUSH_CLIPBOARD"
@@ -467,6 +508,11 @@ class BridgeService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, BridgeService::class.java).setAction(ACTION_START)
+            context.startForegroundService(intent)
+        }
+
+        fun restart(context: Context) {
+            val intent = Intent(context, BridgeService::class.java).setAction(ACTION_RESTART)
             context.startForegroundService(intent)
         }
 

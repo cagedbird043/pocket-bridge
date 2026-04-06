@@ -23,6 +23,7 @@ message Envelope {
     Ack ack = 20;
     Error error = 21;
     AuthResponse auth_response = 22;
+    PushTokenUpdate push_token_update = 23;
   }
 }
 
@@ -39,6 +40,13 @@ message AuthChallenge {
 
 message AuthResponse {
   bytes signature = 1;
+}
+
+message PushTokenUpdate {
+  string provider = 1;
+  string token = 2;
+  string platform = 3;
+  string package_name = 4;
 }
 
 message NotifyPush {

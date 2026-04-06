@@ -24,7 +24,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	srv := relay.New(cfg)
+	srv, err := relay.New(cfg)
+	if err != nil {
+		log.Fatalf("init relay: %v", err)
+	}
 	if err := srv.Run(ctx); err != nil {
 		log.Fatal(err)
 	}

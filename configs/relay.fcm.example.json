@@ -1,0 +1,16 @@
+{
+  "listen_addr": "0.0.0.0:18080",
+  "devices": {
+    "laptop": {
+      "public_key_base64": "MCowBQYDK2VwAyEAefyu3CJ688PbBCpql0TlEAK04LKTr9hFfPDB1Rd+BOY="
+    },
+    "phone": {
+      "public_key_base64": "MCowBQYDK2VwAyEAw1W7KCvoODVO2VvTNeOpTNQ+bAOqZqebcZKNR7M59WU="
+    }
+  },
+  "fcm": {
+    "project_id": "your-firebase-project-id",
+    "credentials_file": "/etc/pocket-bridge/firebase-service-account.json",
+    "token_store_path": "/var/lib/pocket-bridge/fcm-tokens.json"
+  }
+}

@@ -13,6 +13,7 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 - `relay`、`agentd`、`pb` 已完成最小可用链路
 - Android 端当前是原生 Kotlin App，形态为 `MainActivity + 前台 BridgeService`
 - Android 在线时通过 WebSocket 直接收 `notify.push` 和 `task status`
+- Android 离线时可选由 relay 通过 FCM 投递 `notify/task`
 - 显式剪贴板 `push/pull` 已落地到 CLI、agent 和 Android demo
 - 2026-04-06 已在 Android 15 AVD 上验证双向通知闭环
 - 2026-04-06 已在 Wayland laptop + Android 15 AVD 上验证双向剪贴板闭环
@@ -28,6 +29,7 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 - 设备认证
 - WebSocket 会话保持
 - push 消息路由
+- FCM 离线通知投递
 - 短时文件缓存
 - 设备在线状态维护
 
@@ -61,6 +63,7 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 
 - 登录和设备持钥
 - 以前台 WebSocket 接收实时 push 消息
+- 通过 FCM 接收离线 `notify/task`
 - 按需读取或写入系统剪贴板
 - 展示通知
 - 小文件上传下载
@@ -80,6 +83,7 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 - 不假设手机能被反向连接
 - 不把“后台稳定剪贴板监听”作为第一阶段目标
 - 通知默认追求尽快送达，在线时必须优先走实时 push
+- 离线通知优先依赖系统级 push，而不是假设 Android 后台 WebSocket 长期可靠
 
 ## 为什么不用 KDE Connect 路线
 

@@ -3,6 +3,7 @@ package top.miceworld.pocketbridge
 import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -31,10 +32,21 @@ class MainActivity : ComponentActivity() {
         setContentView(binding.root)
 
         NotificationHelper.ensureChannels(this)
+        PushBridge.fetchAndStoreToken(this)
+        applyProvisionIntent(intent)
         requestNotificationPermissionIfNeeded()
         bindInitialConfig()
         bindActions()
         bindState()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyProvisionIntent(intent)
+        if (::binding.isInitialized) {
+            bindInitialConfig()
+        }
     }
 
     private fun bindInitialConfig() {
@@ -143,5 +155,51 @@ class MainActivity : ComponentActivity() {
     private fun writeLocalClipboardText(text: String) {
         val manager = getSystemService(ClipboardManager::class.java) ?: return
         manager.setPrimaryClip(ClipData.newPlainText("pocket-bridge", text))
+    }
+
+    private fun applyProvisionIntent(intent: Intent?) {
+        if (intent == null || !intent.hasProvisionPayload()) {
+            return
+        }
+
+        val current = BridgePrefs.load(this)
+        val next = BridgeConfig(
+            relayUrl = intent.getStringExtra(EXTRA_RELAY_URL)?.trim().takeUnless { it.isNullOrEmpty() } ?: current.relayUrl,
+            deviceId = intent.getStringExtra(EXTRA_DEVICE_ID)?.trim().takeUnless { it.isNullOrEmpty() } ?: current.deviceId,
+            privateKeyBase64 = intent.getStringExtra(EXTRA_PRIVATE_KEY_BASE64)?.trim().takeUnless { it.isNullOrEmpty() } ?: current.privateKeyBase64,
+            notifyTarget = intent.getStringExtra(EXTRA_NOTIFY_TARGET)?.trim().takeUnless { it.isNullOrEmpty() } ?: current.notifyTarget,
+        )
+        BridgePrefs.save(this, next)
+
+        if (intent.getBooleanExtra(EXTRA_AUTO_START, false)) {
+            BridgeService.restart(this)
+        }
+
+        BridgeRuntime.appendLog(
+            "已应用 adb provision: device=${next.deviceId} relay=${next.relayUrl} target=${next.notifyTarget}",
+        )
+
+        if (intent.getBooleanExtra(EXTRA_FINISH_AFTER_PROVISION, false)) {
+            finish()
+        }
+    }
+
+    private fun Intent.hasProvisionPayload(): Boolean {
+        return action == ACTION_PROVISION ||
+            hasExtra(EXTRA_RELAY_URL) ||
+            hasExtra(EXTRA_DEVICE_ID) ||
+            hasExtra(EXTRA_PRIVATE_KEY_BASE64) ||
+            hasExtra(EXTRA_NOTIFY_TARGET) ||
+            hasExtra(EXTRA_AUTO_START)
+    }
+
+    companion object {
+        const val ACTION_PROVISION = "top.miceworld.pocketbridge.action.PROVISION"
+        const val EXTRA_RELAY_URL = "relay_url"
+        const val EXTRA_DEVICE_ID = "device_id"
+        const val EXTRA_PRIVATE_KEY_BASE64 = "private_key_base64"
+        const val EXTRA_NOTIFY_TARGET = "notify_target"
+        const val EXTRA_AUTO_START = "auto_start"
+        const val EXTRA_FINISH_AFTER_PROVISION = "finish_after_provision"
     }
 }

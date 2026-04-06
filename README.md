@@ -51,6 +51,7 @@
 - 本地双 agent demo 所需示例配置
 - Android 原生 Kotlin demo 工程
 - `MainActivity + BridgeService` 的前台连接形态
+- FCM 驱动的离线 `notify/task` 推送骨架
 - AVD 上验证过的双向通知闭环
 - Wayland laptop + Android AVD 上验证过的显式剪贴板闭环
 
@@ -66,7 +67,8 @@
 当前实现边界：
 
 - relay / agent / Android 都已使用同一份 protobuf `Envelope`
-- Android 端当前通过前台服务常驻 WebSocket 收消息
+- Android 端在线时通过前台 WebSocket 收消息
+- Android 端离线通知和任务状态可选接入 FCM
 - 剪贴板当前是显式 `push/pull`，不做后台自动双向覆盖
 - laptop 侧当前通过 `wl-copy` / `wl-paste` 桥接系统剪贴板
 - 当前认证已经切到 `Ed25519 challenge-response`
@@ -115,9 +117,49 @@ sudo make install install-completion install-systemd
 
 - `ws://your-relay-host:18080/ws`
 
+如果要启用 Android 离线推送，relay 配置可参考：
+
+- `configs/relay.fcm.example.json`
+
 当前默认仍是明文 `ws://`，因为这样最容易在 Android 真机上直接跑通。
 它已经有设备级 `Ed25519 challenge-response` 认证，但不提供传输层机密性。
 如果后续要承载敏感剪贴板内容，应该进一步切到 `wss://`。
+
+## Firebase / FCM 配置
+
+这一步是可选增强，不影响当前纯 WebSocket live path。
+
+如果你要让 Android 在离线或被厂商后台收敛后仍能收到 `notify/task`，需要额外准备：
+
+- 在 Firebase 控制台创建 Android App，包名必须是 `top.miceworld.pocketbridge`
+- 下载 `google-services.json` 放到 `android/app/google-services.json`
+- 在 Firebase 控制台为服务端准备 service account JSON
+- 把 service account JSON 放到 relay 主机，例如 `/etc/pocket-bridge/firebase-service-account.json`
+- 在 relay 配置里加上 `fcm.project_id`、`fcm.credentials_file`、`fcm.token_store_path`
+
+仓库当前已做了一个兼容处理：
+
+- 即使没有 `android/app/google-services.json`，Android 仍可正常编译
+- 只是此时 FCM 会自动失效，继续退回“前台 WebSocket 可用”的路径
+
+推荐 relay 配置片段：
+
+```json
+{
+  "fcm": {
+    "project_id": "your-firebase-project-id",
+    "credentials_file": "/etc/pocket-bridge/firebase-service-account.json",
+    "token_store_path": "/var/lib/pocket-bridge/fcm-tokens.json"
+  }
+}
+```
+
+启用后的工作流：
+
+- 手机前台连上 relay 后，会通过已认证的 WebSocket 上报当前 FCM token
+- relay 把 token 持久化到 `token_store_path`
+- 当手机离线时，`notify/task` 会由 relay 直接转成 FCM data message
+- 手机上的 `FirebaseMessagingService` 被唤醒后展示系统通知
 
 ## Quickstart
 
@@ -201,4 +243,5 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - 当前 debug App 为了 AVD 直连宿主机 relay，显式允许了明文 `ws://10.0.2.2`
 - 这只是本地开发路径；公网部署应切到 `wss://` + TLS
 - Android 侧剪贴板目前按用户显式动作工作，符合“前台读写、不要后台自动覆盖”的边界
+- FCM 当前只接入 `notify/task` 的离线推送，不承诺剪贴板和文件传输在后台可靠唤醒
 - 真实部署时请用 `pb keygen` 重新生成每台设备的独立密钥，不要继续使用仓库里的 demo 密钥
