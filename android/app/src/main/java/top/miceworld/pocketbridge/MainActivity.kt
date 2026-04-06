@@ -1,6 +1,8 @@
 package top.miceworld.pocketbridge
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -60,6 +62,28 @@ class MainActivity : ComponentActivity() {
                 body = binding.notifyBodyInput.text.toString().trim(),
             )
         }
+        binding.readClipboardButton.setOnClickListener {
+            binding.clipboardDraftInput.setText(readLocalClipboardText())
+            BridgeRuntime.appendLog("已读取本机剪贴板到草稿区")
+        }
+        binding.writeClipboardButton.setOnClickListener {
+            writeLocalClipboardText(binding.clipboardDraftInput.text.toString())
+            BridgeRuntime.appendLog("已将草稿区写入本机剪贴板")
+        }
+        binding.pushClipboardButton.setOnClickListener {
+            saveConfig()
+            BridgeService.pushClipboard(
+                context = this,
+                target = binding.notifyTargetInput.text.toString().trim(),
+            )
+        }
+        binding.pullClipboardButton.setOnClickListener {
+            saveConfig()
+            BridgeService.pullClipboard(
+                context = this,
+                target = binding.notifyTargetInput.text.toString().trim(),
+            )
+        }
     }
 
     private fun bindState() {
@@ -104,5 +128,19 @@ class MainActivity : ComponentActivity() {
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    private fun readLocalClipboardText(): String {
+        val manager = getSystemService(ClipboardManager::class.java) ?: return ""
+        val clip = manager.primaryClip ?: return ""
+        if (clip.itemCount == 0) {
+            return ""
+        }
+        return clip.getItemAt(0).coerceToText(this)?.toString().orEmpty()
+    }
+
+    private fun writeLocalClipboardText(text: String) {
+        val manager = getSystemService(ClipboardManager::class.java) ?: return
+        manager.setPrimaryClip(ClipData.newPlainText("pocket-bridge", text))
     }
 }

@@ -19,6 +19,7 @@
 - `M0` 已完成：协议、CLI 合同、架构边界已冻结到文档和 proto
 - `M1` 已完成：`relay + agentd + pb` 最小链路已实现并提交
 - `M2` 已跑通 Android demo：2026-04-06 在 Android 15 AVD 上完成双向通知闭环
+- `M3` 已跑通显式剪贴板 demo：2026-04-06 在 Wayland laptop + Android 15 AVD 上完成双向 `clip push/pull`
 - 当前认证仍是静态 token，设备密钥认证还没开始做
 
 ## 里程碑
@@ -79,6 +80,14 @@
 - `clip pull`
 - 安卓端仅在前台读取或写入剪贴板
 - Linux 侧通过 `wl-copy` / `wl-paste` 完成桥接
+
+当前进展：
+
+- 已实现 `pb clip push <target> [text]`
+- 已实现 `pb clip pull <target>`
+- 已在 Wayland laptop 上通过 `wl-copy` / `wl-paste` 验证本地桥接
+- 已在 Android 15 AVD 上验证 clipboard push/pull 双向链路
+- Android 侧保持显式操作语义，不做后台自动监听
 
 完成标准：
 

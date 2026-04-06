@@ -52,17 +52,22 @@
 - Android 原生 Kotlin demo 工程
 - `MainActivity + BridgeService` 的前台连接形态
 - AVD 上验证过的双向通知闭环
+- Wayland laptop + Android AVD 上验证过的显式剪贴板闭环
 
 当前已经实现的命令：
 
 - `pb status`
 - `pb notify <target> <title> <body>`
+- `pb clip push <target> [text]`
+- `pb clip pull <target>`
 - `pb task <started|blocked|done|failed> <title> <summary>`
 
 当前实现边界：
 
 - relay / agent / Android 都已使用同一份 protobuf `Envelope`
 - Android 端当前通过前台服务常驻 WebSocket 收消息
+- 剪贴板当前是显式 `push/pull`，不做后台自动双向覆盖
+- laptop 侧当前通过 `wl-copy` / `wl-paste` 桥接系统剪贴板
 - 当前认证仍然是 `device_id + static token`
 - 设备密钥 / challenge-response 仍是后续里程碑，不在这一版里
 
@@ -83,6 +88,8 @@ go run ./cmd/agentd -config configs/agent.laptop.example.json
 go run ./cmd/agentd -config configs/agent.phone.example.json
 go run ./cmd/pb --socket /tmp/pocket-bridge-laptop.sock status
 go run ./cmd/pb --socket /tmp/pocket-bridge-laptop.sock notify phone "M1 ok" "relay agent cli path is alive"
+go run ./cmd/pb --socket /tmp/pocket-bridge-laptop.sock clip push phone
+go run ./cmd/pb --socket /tmp/pocket-bridge-laptop.sock clip pull phone
 go run ./cmd/pb --socket /tmp/pocket-bridge-laptop.sock task done "Codex task" "task status bridge is alive"
 ```
 
@@ -109,8 +116,11 @@ adb shell am start -n top.miceworld.pocketbridge/.MainActivity
 
 - laptop CLI -> relay -> Android App -> Android 系统通知
 - Android App -> relay -> laptop agent -> `notify-send`
+- laptop clipboard -> relay -> Android clipboard
+- Android clipboard -> relay -> laptop clipboard
 
 开发注意：
 
 - 当前 debug App 为了 AVD 直连宿主机 relay，显式允许了明文 `ws://10.0.2.2`
 - 这只是本地开发路径；公网部署应切到 `wss://` + TLS
+- Android 侧剪贴板目前按用户显式动作工作，符合“前台读写、不要后台自动覆盖”的边界

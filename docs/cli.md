@@ -9,6 +9,9 @@ CLI 必须短、稳定、可脚本化。
 ```bash
 pb status
 pb notify phone "标题" "内容"
+pb clip push phone
+pb clip push phone "显式文本"
+pb clip pull phone
 pb task started "标题" "摘要"
 pb task blocked "标题" "摘要"
 pb task done "标题" "摘要"
@@ -19,17 +22,20 @@ pb task failed "标题" "摘要"
 
 - `pb status`
 - `pb notify <target> <title> <body>`
+- `pb clip push <target> [text]`
+- `pb clip pull <target>`
 - `pb task <started|blocked|done|failed> <title> <summary>`
 
 尚未实现：
 
-- `clip *`
 - `file send *`
 
 ## 行为约束
 
 - `notify` 只发结构化通知，不镜像系统通知，也不支持 pull
 - `clip push/pull` 是显式动作，不做后台自动双向覆盖
+- `clip push <target>` 在 laptop 上默认读取本机系统剪贴板；若额外给 text，则直接发送该文本
+- `clip pull <target>` 会等待远端返回文本，并把结果输出到 stdout
 - `file send` 第一阶段只支持单文件
 - `task *` 是给 Codex/脚本集成预留的稳定入口
 - 笔记本上的 shell 只能作为本地胶水，不参与安卓实现

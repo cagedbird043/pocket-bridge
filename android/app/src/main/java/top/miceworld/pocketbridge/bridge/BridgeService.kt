@@ -1,6 +1,8 @@
 package top.miceworld.pocketbridge.bridge
 
 import android.app.Service
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
@@ -19,6 +21,9 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import pocketbridge.v1.Bridge.Ack
+import pocketbridge.v1.Bridge.ClipboardPull
+import pocketbridge.v1.Bridge.ClipboardPush
+import pocketbridge.v1.Bridge.ClipboardValue
 import pocketbridge.v1.Bridge.DeviceHello
 import pocketbridge.v1.Bridge.Envelope
 import pocketbridge.v1.Bridge.NotifyPush
@@ -55,6 +60,12 @@ class BridgeService : Service() {
                 target = intent.getStringExtra(EXTRA_TARGET).orEmpty(),
                 title = intent.getStringExtra(EXTRA_TITLE).orEmpty(),
                 body = intent.getStringExtra(EXTRA_BODY).orEmpty(),
+            )
+            ACTION_PUSH_CLIPBOARD -> pushClipboard(
+                target = intent.getStringExtra(EXTRA_TARGET).orEmpty(),
+            )
+            ACTION_PULL_CLIPBOARD -> pullClipboard(
+                target = intent.getStringExtra(EXTRA_TARGET).orEmpty(),
             )
             else -> startBridge()
         }
@@ -168,6 +179,62 @@ class BridgeService : Service() {
         }
     }
 
+    private fun pushClipboard(target: String) {
+        val config = currentConfig ?: BridgePrefs.load(this)
+        if (target.isBlank()) {
+            BridgeRuntime.appendLog("发送剪贴板失败：target 不能为空")
+            return
+        }
+        val text = readLocalClipboardText()
+        if (text == null) {
+            BridgeRuntime.appendLog("发送剪贴板失败：本机剪贴板不可读")
+            return
+        }
+        val env = Envelope.newBuilder()
+            .setId(nextId())
+            .setFromDeviceId(config.deviceId)
+            .setToDeviceId(target)
+            .setUnixMs(System.currentTimeMillis())
+            .setClipboardPush(
+                ClipboardPush.newBuilder()
+                    .setMimeType("text/plain;charset=utf-8")
+                    .setText(text)
+                    .build(),
+            )
+            .build()
+        val ok = socket?.send(okio.ByteString.of(*env.toByteArray())) == true
+        if (ok) {
+            BridgeRuntime.appendLog("已发送剪贴板到 $target: ${previewText(text)}")
+        } else {
+            BridgeRuntime.appendLog("发送剪贴板失败：当前未连接 relay")
+        }
+    }
+
+    private fun pullClipboard(target: String) {
+        val config = currentConfig ?: BridgePrefs.load(this)
+        if (target.isBlank()) {
+            BridgeRuntime.appendLog("拉取剪贴板失败：target 不能为空")
+            return
+        }
+        val env = Envelope.newBuilder()
+            .setId(nextId())
+            .setFromDeviceId(config.deviceId)
+            .setToDeviceId(target)
+            .setUnixMs(System.currentTimeMillis())
+            .setClipboardPull(
+                ClipboardPull.newBuilder()
+                    .setPreferredMimeType("text/plain;charset=utf-8")
+                    .build(),
+            )
+            .build()
+        val ok = socket?.send(okio.ByteString.of(*env.toByteArray())) == true
+        if (ok) {
+            BridgeRuntime.appendLog("已请求从 $target 拉取剪贴板")
+        } else {
+            BridgeRuntime.appendLog("拉取剪贴板失败：当前未连接 relay")
+        }
+    }
+
     private inner class BridgeSocketListener(
         private val config: BridgeConfig,
     ) : WebSocketListener() {
@@ -231,6 +298,42 @@ class BridgeService : Service() {
                             body,
                         )
                     }
+                    Envelope.PayloadCase.CLIPBOARD_PUSH -> {
+                        val msg = env.clipboardPush
+                        writeLocalClipboardText(msg.text)
+                        BridgeRuntime.appendLog("剪贴板 from=${env.fromDeviceId} 已写入本机: ${previewText(msg.text)}")
+                    }
+                    Envelope.PayloadCase.CLIPBOARD_PULL -> {
+                        val msg = env.clipboardPull
+                        val mimeType = if (msg.preferredMimeType.isBlank()) {
+                            "text/plain;charset=utf-8"
+                        } else {
+                            msg.preferredMimeType
+                        }
+                        val reply = Envelope.newBuilder()
+                            .setId(nextId())
+                            .setFromDeviceId(config.deviceId)
+                            .setToDeviceId(env.fromDeviceId)
+                            .setUnixMs(System.currentTimeMillis())
+                            .setClipboardValue(
+                                ClipboardValue.newBuilder()
+                                    .setMimeType(mimeType)
+                                    .setText(readLocalClipboardText().orEmpty())
+                                    .build(),
+                            )
+                            .build()
+                        val ok = socket?.send(okio.ByteString.of(*reply.toByteArray())) == true
+                        if (ok) {
+                            BridgeRuntime.appendLog("已响应 ${env.fromDeviceId} 的剪贴板拉取请求")
+                        } else {
+                            BridgeRuntime.appendLog("响应剪贴板拉取失败：当前未连接 relay")
+                        }
+                    }
+                    Envelope.PayloadCase.CLIPBOARD_VALUE -> {
+                        val msg = env.clipboardValue
+                        writeLocalClipboardText(msg.text)
+                        BridgeRuntime.appendLog("剪贴板 from=${env.fromDeviceId} 已同步到本机: ${previewText(msg.text)}")
+                    }
                     Envelope.PayloadCase.ERROR -> {
                         BridgeRuntime.appendLog("relay 错误: ${env.error.code} ${env.error.message}")
                     }
@@ -266,10 +369,26 @@ class BridgeService : Service() {
         }
     }
 
+    private fun readLocalClipboardText(): String? {
+        val manager = getSystemService(ClipboardManager::class.java) ?: return null
+        val clip = manager.primaryClip ?: return ""
+        if (clip.itemCount == 0) {
+            return ""
+        }
+        return clip.getItemAt(0).coerceToText(this)?.toString().orEmpty()
+    }
+
+    private fun writeLocalClipboardText(text: String) {
+        val manager = getSystemService(ClipboardManager::class.java) ?: return
+        manager.setPrimaryClip(ClipData.newPlainText("pocket-bridge", text))
+    }
+
     companion object {
         private const val ACTION_START = "top.miceworld.pocketbridge.action.START"
         private const val ACTION_STOP = "top.miceworld.pocketbridge.action.STOP"
         private const val ACTION_SEND_NOTIFY = "top.miceworld.pocketbridge.action.SEND_NOTIFY"
+        private const val ACTION_PUSH_CLIPBOARD = "top.miceworld.pocketbridge.action.PUSH_CLIPBOARD"
+        private const val ACTION_PULL_CLIPBOARD = "top.miceworld.pocketbridge.action.PULL_CLIPBOARD"
         private const val EXTRA_TARGET = "target"
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_BODY = "body"
@@ -293,6 +412,25 @@ class BridgeService : Service() {
             context.startService(intent)
         }
 
+        fun pushClipboard(context: Context, target: String) {
+            val intent = Intent(context, BridgeService::class.java)
+                .setAction(ACTION_PUSH_CLIPBOARD)
+                .putExtra(EXTRA_TARGET, target)
+            context.startService(intent)
+        }
+
+        fun pullClipboard(context: Context, target: String) {
+            val intent = Intent(context, BridgeService::class.java)
+                .setAction(ACTION_PULL_CLIPBOARD)
+                .putExtra(EXTRA_TARGET, target)
+            context.startService(intent)
+        }
+
         private fun nextId(): String = System.currentTimeMillis().toString()
+
+        private fun previewText(text: String): String {
+            val normalized = text.replace("\n", "\\n")
+            return if (normalized.length <= 80) normalized else normalized.take(80) + "..."
+        }
     }
 }

@@ -22,6 +22,14 @@ type statusResponse struct {
 	LastError string `json:"last_error,omitempty"`
 }
 
+type clipboardPullResponse struct {
+	FromDeviceID string `json:"from_device_id"`
+	MimeType     string `json:"mime_type"`
+	Text         string `json:"text"`
+	LocalApplied bool   `json:"local_applied"`
+	LocalError   string `json:"local_error,omitempty"`
+}
+
 func main() {
 	socketPath := flag.String("socket", defaultSocketPath(), "agent unix socket path")
 	flag.Parse()
@@ -48,6 +56,8 @@ func main() {
 		}
 		postJSON(client, "/v1/notify", payload)
 		fmt.Println("notify queued")
+	case "clip":
+		handleClip(client, args)
 	case "task":
 		if len(args) < 3 {
 			usage()
@@ -60,6 +70,47 @@ func main() {
 		}
 		postJSON(client, "/v1/task", payload)
 		fmt.Println("task queued")
+	default:
+		usage()
+	}
+}
+
+func handleClip(client *http.Client, args []string) {
+	if len(args) < 2 {
+		usage()
+	}
+
+	switch args[0] {
+	case "push":
+		payload := map[string]any{
+			"target":    args[1],
+			"mime_type": "text/plain;charset=utf-8",
+		}
+		if len(args) == 2 {
+			payload["read_local_clipboard"] = true
+		} else {
+			payload["text"] = strings.Join(args[2:], " ")
+		}
+		postJSON(client, "/v1/clip/push", payload)
+		fmt.Println("clipboard push queued")
+	case "pull":
+		if len(args) != 2 {
+			usage()
+		}
+		body := postJSON(client, "/v1/clip/pull", map[string]any{
+			"target": args[1],
+		})
+		var out clipboardPullResponse
+		if err := json.Unmarshal(body, &out); err != nil {
+			exitErr(err)
+		}
+		_, _ = io.WriteString(os.Stdout, out.Text)
+		if !strings.HasSuffix(out.Text, "\n") {
+			fmt.Println()
+		}
+		if out.LocalError != "" {
+			fmt.Fprintln(os.Stderr, "警告:", out.LocalError)
+		}
 	default:
 		usage()
 	}
@@ -86,7 +137,7 @@ func handleStatus(client *http.Client) {
 	fmt.Println()
 }
 
-func postJSON(client *http.Client, path string, payload any) {
+func postJSON(client *http.Client, path string, payload any) []byte {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		exitErr(err)
@@ -96,10 +147,14 @@ func postJSON(client *http.Client, path string, payload any) {
 		exitErr(err)
 	}
 	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		exitErr(err)
+	}
 	if resp.StatusCode/100 != 2 {
-		body, _ := io.ReadAll(resp.Body)
 		exitErr(fmt.Errorf("status %s: %s", resp.Status, strings.TrimSpace(string(body))))
 	}
+	return body
 }
 
 func newUnixHTTPClient(socket string) *http.Client {
@@ -110,7 +165,7 @@ func newUnixHTTPClient(socket string) *http.Client {
 	}
 	return &http.Client{
 		Transport: transport,
-		Timeout:   3 * time.Second,
+		Timeout:   20 * time.Second,
 	}
 }
 
@@ -130,6 +185,8 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "用法:")
 	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] status")
 	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] notify <target> <title> <body>")
+	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] clip push <target> [text]")
+	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] clip pull <target>")
 	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] task <started|blocked|done|failed> <title> <summary>")
 	os.Exit(1)
 }

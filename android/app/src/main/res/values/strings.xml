@@ -7,9 +7,15 @@
     <string name="hint_notify_target">通知目标，例如 laptop</string>
     <string name="hint_notify_title">通知标题</string>
     <string name="hint_notify_body">通知正文</string>
+    <string name="clipboard_header">剪贴板</string>
+    <string name="hint_clipboard_draft">剪贴板草稿 / 预览</string>
     <string name="action_start">启动连接</string>
     <string name="action_stop">停止连接</string>
     <string name="action_send_notify">发送通知</string>
+    <string name="action_read_clipboard">读取本机剪贴板</string>
+    <string name="action_write_clipboard">写入本机剪贴板</string>
+    <string name="action_push_clipboard">推送剪贴板到目标</string>
+    <string name="action_pull_clipboard">从目标拉取剪贴板</string>
     <string name="log_header">运行日志</string>
     <string name="service_channel_name">Pocket Bridge Service</string>
     <string name="service_channel_description">保持与 relay 的实时连接</string>

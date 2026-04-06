@@ -109,6 +109,68 @@
             android:text="@string/action_send_notify" />
 
         <TextView
+            android:id="@+id/clipboardHeaderText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/clipboard_header"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/clipboardDraftInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="top"
+            android:hint="@string/hint_clipboard_draft"
+            android:inputType="textMultiLine"
+            android:minLines="3" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/readClipboardButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/action_read_clipboard" />
+
+            <Button
+                android:id="@+id/writeClipboardButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/action_write_clipboard" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/pushClipboardButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/action_push_clipboard" />
+
+            <Button
+                android:id="@+id/pullClipboardButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/action_pull_clipboard" />
+        </LinearLayout>
+
+        <TextView
             android:id="@+id/logHeaderText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

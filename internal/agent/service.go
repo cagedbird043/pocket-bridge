@@ -30,6 +30,9 @@ type Service struct {
 	writeMu   sync.Mutex
 	connected bool
 	lastError string
+
+	clipboardMu         sync.Mutex
+	pendingClipboardMap map[string]chan clipboardValueResult
 }
 
 type Status struct {
@@ -54,8 +57,36 @@ type TaskRequest struct {
 	Summary string `json:"summary"`
 }
 
+type ClipboardPushRequest struct {
+	Target             string `json:"target"`
+	MimeType           string `json:"mime_type"`
+	Text               string `json:"text"`
+	ReadLocalClipboard bool   `json:"read_local_clipboard"`
+}
+
+type ClipboardPullRequest struct {
+	Target            string `json:"target"`
+	PreferredMimeType string `json:"preferred_mime_type"`
+	TimeoutMs         int    `json:"timeout_ms"`
+}
+
+type ClipboardValueResponse struct {
+	FromDeviceID string `json:"from_device_id"`
+	MimeType     string `json:"mime_type"`
+	Text         string `json:"text"`
+	LocalApplied bool   `json:"local_applied,omitempty"`
+	LocalError   string `json:"local_error,omitempty"`
+}
+
+type clipboardValueResult struct {
+	response ClipboardValueResponse
+}
+
 func New(cfg *config.AgentConfig) *Service {
-	return &Service{cfg: cfg}
+	return &Service{
+		cfg:                 cfg,
+		pendingClipboardMap: make(map[string]chan clipboardValueResult),
+	}
 }
 
 func (s *Service) Run(ctx context.Context) error {
@@ -99,6 +130,8 @@ func (s *Service) runUnixSocketServer(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/status", s.handleStatus)
 	mux.HandleFunc("/v1/notify", s.handleNotify)
+	mux.HandleFunc("/v1/clip/push", s.handleClipboardPush)
+	mux.HandleFunc("/v1/clip/pull", s.handleClipboardPull)
 	mux.HandleFunc("/v1/task", s.handleTask)
 
 	srv := &http.Server{Handler: mux}
@@ -204,6 +237,49 @@ func (s *Service) handleEnvelope(env *pocketbridgev1.Envelope) {
 		if err := s.runNotifyCommand(msg.TaskStatus.Title, msg.TaskStatus.Summary); err != nil {
 			log.Printf("task notify command failed: %v", err)
 		}
+	case *pocketbridgev1.Envelope_ClipboardPush:
+		if s.cfg.LogIncoming {
+			log.Printf("clipboard push from=%s mime=%s text=%q", env.FromDeviceId, msg.ClipboardPush.MimeType, previewText(msg.ClipboardPush.Text))
+		}
+		s.applyClipboardTextAsync("clipboard push", msg.ClipboardPush.Text)
+	case *pocketbridgev1.Envelope_ClipboardPull:
+		if s.cfg.LogIncoming {
+			log.Printf("clipboard pull from=%s preferred=%q", env.FromDeviceId, msg.ClipboardPull.PreferredMimeType)
+		}
+		text, err := s.readClipboardText()
+		if err != nil {
+			log.Printf("clipboard read failed: %v", err)
+			if sendErr := s.sendAgentError(env.FromDeviceId, "clipboard_read_failed", err.Error()); sendErr != nil {
+				log.Printf("clipboard read error reply failed: %v", sendErr)
+			}
+			return
+		}
+		value := &pocketbridgev1.Envelope{
+			Id:           nextID(),
+			FromDeviceId: s.cfg.DeviceID,
+			ToDeviceId:   env.FromDeviceId,
+			UnixMs:       time.Now().UnixMilli(),
+			Payload: &pocketbridgev1.Envelope_ClipboardValue{
+				ClipboardValue: &pocketbridgev1.ClipboardValue{
+					MimeType: "text/plain;charset=utf-8",
+					Text:     text,
+				},
+			},
+		}
+		if err := s.sendEnvelope(value); err != nil {
+			log.Printf("clipboard value reply failed: %v", err)
+		}
+	case *pocketbridgev1.Envelope_ClipboardValue:
+		if s.cfg.LogIncoming {
+			log.Printf("clipboard value from=%s mime=%s text=%q", env.FromDeviceId, msg.ClipboardValue.MimeType, previewText(msg.ClipboardValue.Text))
+		}
+		result := ClipboardValueResponse{
+			FromDeviceID: env.FromDeviceId,
+			MimeType:     msg.ClipboardValue.MimeType,
+			Text:         msg.ClipboardValue.Text,
+		}
+		s.resolveClipboardWaiter(env.FromDeviceId, result)
+		s.applyClipboardTextAsync("clipboard value", msg.ClipboardValue.Text)
 	default:
 		if s.cfg.LogIncoming {
 			log.Printf("agent ignored payload type %T", env.Payload)
@@ -255,6 +331,105 @@ func (s *Service) handleNotify(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusAccepted)
 	_, _ = w.Write([]byte("queued\n"))
+}
+
+func (s *Service) handleClipboardPush(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req ClipboardPushRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if req.Target == "" {
+		http.Error(w, "target is required", http.StatusBadRequest)
+		return
+	}
+	text := req.Text
+	if req.ReadLocalClipboard {
+		var err error
+		text, err = s.readClipboardText()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	mimeType := req.MimeType
+	if mimeType == "" {
+		mimeType = "text/plain;charset=utf-8"
+	}
+	env := &pocketbridgev1.Envelope{
+		Id:           nextID(),
+		FromDeviceId: s.cfg.DeviceID,
+		ToDeviceId:   s.resolveTarget(req.Target),
+		UnixMs:       time.Now().UnixMilli(),
+		Payload: &pocketbridgev1.Envelope_ClipboardPush{
+			ClipboardPush: &pocketbridgev1.ClipboardPush{
+				MimeType: mimeType,
+				Text:     text,
+			},
+		},
+	}
+	if err := s.sendEnvelope(env); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = w.Write([]byte("queued\n"))
+}
+
+func (s *Service) handleClipboardPull(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req ClipboardPullRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if req.Target == "" {
+		http.Error(w, "target is required", http.StatusBadRequest)
+		return
+	}
+	target := s.resolveTarget(req.Target)
+	waitCh, err := s.registerClipboardWaiter(target)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	defer s.unregisterClipboardWaiter(target, waitCh)
+
+	env := &pocketbridgev1.Envelope{
+		Id:           nextID(),
+		FromDeviceId: s.cfg.DeviceID,
+		ToDeviceId:   target,
+		UnixMs:       time.Now().UnixMilli(),
+		Payload: &pocketbridgev1.Envelope_ClipboardPull{
+			ClipboardPull: &pocketbridgev1.ClipboardPull{
+				PreferredMimeType: req.PreferredMimeType,
+			},
+		},
+	}
+	if err := s.sendEnvelope(env); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
+	timeout := 15 * time.Second
+	if req.TimeoutMs > 0 {
+		timeout = time.Duration(req.TimeoutMs) * time.Millisecond
+	}
+
+	select {
+	case result := <-waitCh:
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(result.response)
+	case <-time.After(timeout):
+		http.Error(w, "timed out waiting for clipboard value", http.StatusGatewayTimeout)
+	}
 }
 
 func (s *Service) handleTask(w http.ResponseWriter, r *http.Request) {
@@ -328,6 +503,21 @@ func (s *Service) sendEnvelope(env *pocketbridgev1.Envelope) error {
 	return conn.WriteMessage(websocket.BinaryMessage, data)
 }
 
+func (s *Service) sendAgentError(target, code, message string) error {
+	return s.sendEnvelope(&pocketbridgev1.Envelope{
+		Id:           nextID(),
+		FromDeviceId: s.cfg.DeviceID,
+		ToDeviceId:   target,
+		UnixMs:       time.Now().UnixMilli(),
+		Payload: &pocketbridgev1.Envelope_Error{
+			Error: &pocketbridgev1.Error{
+				Code:    code,
+				Message: message,
+			},
+		},
+	})
+}
+
 func (s *Service) setConn(conn *websocket.Conn) {
 	s.connMu.Lock()
 	defer s.connMu.Unlock()
@@ -368,6 +558,78 @@ func (s *Service) runNotifyCommand(title, body string) error {
 		return fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return nil
+}
+
+func (s *Service) readClipboardText() (string, error) {
+	cmd := exec.Command("wl-paste", "-n")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("wl-paste failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
+}
+
+func (s *Service) writeClipboardText(text string) error {
+	cmd := exec.Command("wl-copy", "-t", "text/plain;charset=utf-8")
+	cmd.Stdin = strings.NewReader(text)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("wl-copy failed: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
+func (s *Service) applyClipboardTextAsync(source, text string) {
+	go func() {
+		if err := s.writeClipboardText(text); err != nil {
+			log.Printf("%s apply failed: %v", source, err)
+		}
+	}()
+}
+
+func (s *Service) registerClipboardWaiter(target string) (chan clipboardValueResult, error) {
+	s.clipboardMu.Lock()
+	defer s.clipboardMu.Unlock()
+	if _, exists := s.pendingClipboardMap[target]; exists {
+		return nil, fmt.Errorf("clipboard pull already pending for %s", target)
+	}
+	ch := make(chan clipboardValueResult, 1)
+	s.pendingClipboardMap[target] = ch
+	return ch, nil
+}
+
+func (s *Service) unregisterClipboardWaiter(target string, ch chan clipboardValueResult) {
+	s.clipboardMu.Lock()
+	defer s.clipboardMu.Unlock()
+	if current, exists := s.pendingClipboardMap[target]; exists && current == ch {
+		delete(s.pendingClipboardMap, target)
+	}
+}
+
+func (s *Service) resolveClipboardWaiter(target string, response ClipboardValueResponse) {
+	s.clipboardMu.Lock()
+	ch, exists := s.pendingClipboardMap[target]
+	if exists {
+		delete(s.pendingClipboardMap, target)
+	}
+	s.clipboardMu.Unlock()
+	if !exists {
+		return
+	}
+	ch <- clipboardValueResult{response: response}
+	close(ch)
+}
+
+func previewText(text string) string {
+	normalized := strings.ReplaceAll(text, "\n", "\\n")
+	if len(normalized) <= 80 {
+		return normalized
+	}
+	return normalized[:80] + "..."
 }
 
 func expandPath(path string) string {

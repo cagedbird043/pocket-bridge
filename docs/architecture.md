@@ -13,7 +13,9 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 - `relay`、`agentd`、`pb` 已完成最小可用链路
 - Android 端当前是原生 Kotlin App，形态为 `MainActivity + 前台 BridgeService`
 - Android 在线时通过 WebSocket 直接收 `notify.push` 和 `task status`
+- 显式剪贴板 `push/pull` 已落地到 CLI、agent 和 Android demo
 - 2026-04-06 已在 Android 15 AVD 上验证双向通知闭环
+- 2026-04-06 已在 Wayland laptop + Android 15 AVD 上验证双向剪贴板闭环
 - 当前认证仍是 `device_id + static token`
 - 当前 debug App 允许明文 `ws://10.0.2.2`，只用于 AVD 连接宿主机 relay 的开发路径
 
@@ -69,6 +71,7 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 - 不依赖 shell
 - 不依赖 Termux
 - 不把通知设计成 pull 模式
+- 剪贴板只做显式读写，不做后台自动双向监听
 
 ## 设计约束
 
@@ -96,5 +99,5 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 ## 当前与目标的差距
 
 - 设备密钥认证尚未落地，当前仍是静态 token
-- Android 端目前只覆盖通知链路，剪贴板和小文件仍未实现
+- 小文件投递仍未实现
 - 明文 `ws` 只应存在于本地开发；公网环境必须收敛到 TLS
