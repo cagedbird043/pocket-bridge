@@ -43,12 +43,13 @@
             android:singleLine="true" />
 
         <EditText
-            android:id="@+id/tokenInput"
+            android:id="@+id/privateKeyInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:hint="@string/hint_token"
-            android:inputType="textPassword"
+            android:fontFamily="monospace"
+            android:hint="@string/hint_private_key_base64"
+            android:inputType="textNoSuggestions"
             android:singleLine="true" />
 
         <EditText

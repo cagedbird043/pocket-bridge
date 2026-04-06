@@ -12,12 +12,12 @@ type RelayConfig struct {
 }
 
 type RelayDevice struct {
-	Token string `json:"token"`
+	PublicKeyBase64 string `json:"public_key_base64"`
 }
 
 type AgentConfig struct {
 	DeviceID              string            `json:"device_id"`
-	Token                 string            `json:"token"`
+	PrivateKeyBase64      string            `json:"private_key_base64"`
 	RelayURL              string            `json:"relay_url"`
 	UnixSocket            string            `json:"unix_socket"`
 	Targets               map[string]string `json:"targets"`
@@ -36,6 +36,11 @@ func LoadRelayConfig(path string) (*RelayConfig, error) {
 	if len(cfg.Devices) == 0 {
 		return nil, fmt.Errorf("relay config missing devices")
 	}
+	for deviceID, device := range cfg.Devices {
+		if device.PublicKeyBase64 == "" {
+			return nil, fmt.Errorf("relay config missing public_key_base64 for device %s", deviceID)
+		}
+	}
 	return &cfg, nil
 }
 
@@ -47,8 +52,8 @@ func LoadAgentConfig(path string) (*AgentConfig, error) {
 	if cfg.DeviceID == "" {
 		return nil, fmt.Errorf("agent config missing device_id")
 	}
-	if cfg.Token == "" {
-		return nil, fmt.Errorf("agent config missing token")
+	if cfg.PrivateKeyBase64 == "" {
+		return nil, fmt.Errorf("agent config missing private_key_base64")
 	}
 	if cfg.RelayURL == "" {
 		return nil, fmt.Errorf("agent config missing relay_url")

@@ -31,6 +31,7 @@ type Envelope struct {
 	//
 	//	*Envelope_DeviceHello
 	//	*Envelope_NotifyPush
+	//	*Envelope_AuthChallenge
 	//	*Envelope_ClipboardPush
 	//	*Envelope_ClipboardPull
 	//	*Envelope_ClipboardValue
@@ -40,6 +41,7 @@ type Envelope struct {
 	//	*Envelope_TaskStatus
 	//	*Envelope_Ack
 	//	*Envelope_Error
+	//	*Envelope_AuthResponse
 	Payload       isEnvelope_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -128,6 +130,15 @@ func (x *Envelope) GetNotifyPush() *NotifyPush {
 	return nil
 }
 
+func (x *Envelope) GetAuthChallenge() *AuthChallenge {
+	if x != nil {
+		if x, ok := x.Payload.(*Envelope_AuthChallenge); ok {
+			return x.AuthChallenge
+		}
+	}
+	return nil
+}
+
 func (x *Envelope) GetClipboardPush() *ClipboardPush {
 	if x != nil {
 		if x, ok := x.Payload.(*Envelope_ClipboardPush); ok {
@@ -209,6 +220,15 @@ func (x *Envelope) GetError() *Error {
 	return nil
 }
 
+func (x *Envelope) GetAuthResponse() *AuthResponse {
+	if x != nil {
+		if x, ok := x.Payload.(*Envelope_AuthResponse); ok {
+			return x.AuthResponse
+		}
+	}
+	return nil
+}
+
 type isEnvelope_Payload interface {
 	isEnvelope_Payload()
 }
@@ -219,6 +239,10 @@ type Envelope_DeviceHello struct {
 
 type Envelope_NotifyPush struct {
 	NotifyPush *NotifyPush `protobuf:"bytes,11,opt,name=notify_push,json=notifyPush,proto3,oneof"`
+}
+
+type Envelope_AuthChallenge struct {
+	AuthChallenge *AuthChallenge `protobuf:"bytes,12,opt,name=auth_challenge,json=authChallenge,proto3,oneof"`
 }
 
 type Envelope_ClipboardPush struct {
@@ -257,9 +281,15 @@ type Envelope_Error struct {
 	Error *Error `protobuf:"bytes,21,opt,name=error,proto3,oneof"`
 }
 
+type Envelope_AuthResponse struct {
+	AuthResponse *AuthResponse `protobuf:"bytes,22,opt,name=auth_response,json=authResponse,proto3,oneof"`
+}
+
 func (*Envelope_DeviceHello) isEnvelope_Payload() {}
 
 func (*Envelope_NotifyPush) isEnvelope_Payload() {}
+
+func (*Envelope_AuthChallenge) isEnvelope_Payload() {}
 
 func (*Envelope_ClipboardPush) isEnvelope_Payload() {}
 
@@ -278,6 +308,8 @@ func (*Envelope_TaskStatus) isEnvelope_Payload() {}
 func (*Envelope_Ack) isEnvelope_Payload() {}
 
 func (*Envelope_Error) isEnvelope_Payload() {}
+
+func (*Envelope_AuthResponse) isEnvelope_Payload() {}
 
 type DeviceHello struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -339,6 +371,102 @@ func (x *DeviceHello) GetProtocolVersion() string {
 	return ""
 }
 
+type AuthChallenge struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ChallengeData []byte                 `protobuf:"bytes,1,opt,name=challenge_data,json=challengeData,proto3" json:"challenge_data,omitempty"`
+	Algorithm     string                 `protobuf:"bytes,2,opt,name=algorithm,proto3" json:"algorithm,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthChallenge) Reset() {
+	*x = AuthChallenge{}
+	mi := &file_proto_bridge_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthChallenge) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthChallenge) ProtoMessage() {}
+
+func (x *AuthChallenge) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bridge_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthChallenge.ProtoReflect.Descriptor instead.
+func (*AuthChallenge) Descriptor() ([]byte, []int) {
+	return file_proto_bridge_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AuthChallenge) GetChallengeData() []byte {
+	if x != nil {
+		return x.ChallengeData
+	}
+	return nil
+}
+
+func (x *AuthChallenge) GetAlgorithm() string {
+	if x != nil {
+		return x.Algorithm
+	}
+	return ""
+}
+
+type AuthResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Signature     []byte                 `protobuf:"bytes,1,opt,name=signature,proto3" json:"signature,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthResponse) Reset() {
+	*x = AuthResponse{}
+	mi := &file_proto_bridge_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthResponse) ProtoMessage() {}
+
+func (x *AuthResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bridge_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthResponse.ProtoReflect.Descriptor instead.
+func (*AuthResponse) Descriptor() ([]byte, []int) {
+	return file_proto_bridge_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *AuthResponse) GetSignature() []byte {
+	if x != nil {
+		return x.Signature
+	}
+	return nil
+}
+
 type NotifyPush struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Title         string                 `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
@@ -351,7 +479,7 @@ type NotifyPush struct {
 
 func (x *NotifyPush) Reset() {
 	*x = NotifyPush{}
-	mi := &file_proto_bridge_proto_msgTypes[2]
+	mi := &file_proto_bridge_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -363,7 +491,7 @@ func (x *NotifyPush) String() string {
 func (*NotifyPush) ProtoMessage() {}
 
 func (x *NotifyPush) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bridge_proto_msgTypes[2]
+	mi := &file_proto_bridge_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -376,7 +504,7 @@ func (x *NotifyPush) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NotifyPush.ProtoReflect.Descriptor instead.
 func (*NotifyPush) Descriptor() ([]byte, []int) {
-	return file_proto_bridge_proto_rawDescGZIP(), []int{2}
+	return file_proto_bridge_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *NotifyPush) GetTitle() string {
@@ -417,7 +545,7 @@ type ClipboardPush struct {
 
 func (x *ClipboardPush) Reset() {
 	*x = ClipboardPush{}
-	mi := &file_proto_bridge_proto_msgTypes[3]
+	mi := &file_proto_bridge_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -429,7 +557,7 @@ func (x *ClipboardPush) String() string {
 func (*ClipboardPush) ProtoMessage() {}
 
 func (x *ClipboardPush) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bridge_proto_msgTypes[3]
+	mi := &file_proto_bridge_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -442,7 +570,7 @@ func (x *ClipboardPush) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClipboardPush.ProtoReflect.Descriptor instead.
 func (*ClipboardPush) Descriptor() ([]byte, []int) {
-	return file_proto_bridge_proto_rawDescGZIP(), []int{3}
+	return file_proto_bridge_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ClipboardPush) GetMimeType() string {
@@ -468,7 +596,7 @@ type ClipboardPull struct {
 
 func (x *ClipboardPull) Reset() {
 	*x = ClipboardPull{}
-	mi := &file_proto_bridge_proto_msgTypes[4]
+	mi := &file_proto_bridge_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -480,7 +608,7 @@ func (x *ClipboardPull) String() string {
 func (*ClipboardPull) ProtoMessage() {}
 
 func (x *ClipboardPull) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bridge_proto_msgTypes[4]
+	mi := &file_proto_bridge_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -493,7 +621,7 @@ func (x *ClipboardPull) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClipboardPull.ProtoReflect.Descriptor instead.
 func (*ClipboardPull) Descriptor() ([]byte, []int) {
-	return file_proto_bridge_proto_rawDescGZIP(), []int{4}
+	return file_proto_bridge_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ClipboardPull) GetPreferredMimeType() string {
@@ -513,7 +641,7 @@ type ClipboardValue struct {
 
 func (x *ClipboardValue) Reset() {
 	*x = ClipboardValue{}
-	mi := &file_proto_bridge_proto_msgTypes[5]
+	mi := &file_proto_bridge_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -525,7 +653,7 @@ func (x *ClipboardValue) String() string {
 func (*ClipboardValue) ProtoMessage() {}
 
 func (x *ClipboardValue) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bridge_proto_msgTypes[5]
+	mi := &file_proto_bridge_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -538,7 +666,7 @@ func (x *ClipboardValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClipboardValue.ProtoReflect.Descriptor instead.
 func (*ClipboardValue) Descriptor() ([]byte, []int) {
-	return file_proto_bridge_proto_rawDescGZIP(), []int{5}
+	return file_proto_bridge_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ClipboardValue) GetMimeType() string {
@@ -567,7 +695,7 @@ type FileOffer struct {
 
 func (x *FileOffer) Reset() {
 	*x = FileOffer{}
-	mi := &file_proto_bridge_proto_msgTypes[6]
+	mi := &file_proto_bridge_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -579,7 +707,7 @@ func (x *FileOffer) String() string {
 func (*FileOffer) ProtoMessage() {}
 
 func (x *FileOffer) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bridge_proto_msgTypes[6]
+	mi := &file_proto_bridge_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -592,7 +720,7 @@ func (x *FileOffer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileOffer.ProtoReflect.Descriptor instead.
 func (*FileOffer) Descriptor() ([]byte, []int) {
-	return file_proto_bridge_proto_rawDescGZIP(), []int{6}
+	return file_proto_bridge_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *FileOffer) GetFileName() string {
@@ -634,7 +762,7 @@ type FileChunk struct {
 
 func (x *FileChunk) Reset() {
 	*x = FileChunk{}
-	mi := &file_proto_bridge_proto_msgTypes[7]
+	mi := &file_proto_bridge_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -646,7 +774,7 @@ func (x *FileChunk) String() string {
 func (*FileChunk) ProtoMessage() {}
 
 func (x *FileChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bridge_proto_msgTypes[7]
+	mi := &file_proto_bridge_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -659,7 +787,7 @@ func (x *FileChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileChunk.ProtoReflect.Descriptor instead.
 func (*FileChunk) Descriptor() ([]byte, []int) {
-	return file_proto_bridge_proto_rawDescGZIP(), []int{7}
+	return file_proto_bridge_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *FileChunk) GetTransferId() string {
@@ -694,7 +822,7 @@ type FileDone struct {
 
 func (x *FileDone) Reset() {
 	*x = FileDone{}
-	mi := &file_proto_bridge_proto_msgTypes[8]
+	mi := &file_proto_bridge_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -706,7 +834,7 @@ func (x *FileDone) String() string {
 func (*FileDone) ProtoMessage() {}
 
 func (x *FileDone) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bridge_proto_msgTypes[8]
+	mi := &file_proto_bridge_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -719,7 +847,7 @@ func (x *FileDone) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileDone.ProtoReflect.Descriptor instead.
 func (*FileDone) Descriptor() ([]byte, []int) {
-	return file_proto_bridge_proto_rawDescGZIP(), []int{8}
+	return file_proto_bridge_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *FileDone) GetTransferId() string {
@@ -754,7 +882,7 @@ type TaskStatus struct {
 
 func (x *TaskStatus) Reset() {
 	*x = TaskStatus{}
-	mi := &file_proto_bridge_proto_msgTypes[9]
+	mi := &file_proto_bridge_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -766,7 +894,7 @@ func (x *TaskStatus) String() string {
 func (*TaskStatus) ProtoMessage() {}
 
 func (x *TaskStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bridge_proto_msgTypes[9]
+	mi := &file_proto_bridge_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -779,7 +907,7 @@ func (x *TaskStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskStatus.ProtoReflect.Descriptor instead.
 func (*TaskStatus) Descriptor() ([]byte, []int) {
-	return file_proto_bridge_proto_rawDescGZIP(), []int{9}
+	return file_proto_bridge_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *TaskStatus) GetKind() string {
@@ -812,7 +940,7 @@ type Ack struct {
 
 func (x *Ack) Reset() {
 	*x = Ack{}
-	mi := &file_proto_bridge_proto_msgTypes[10]
+	mi := &file_proto_bridge_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -824,7 +952,7 @@ func (x *Ack) String() string {
 func (*Ack) ProtoMessage() {}
 
 func (x *Ack) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bridge_proto_msgTypes[10]
+	mi := &file_proto_bridge_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -837,7 +965,7 @@ func (x *Ack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ack.ProtoReflect.Descriptor instead.
 func (*Ack) Descriptor() ([]byte, []int) {
-	return file_proto_bridge_proto_rawDescGZIP(), []int{10}
+	return file_proto_bridge_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Ack) GetAckId() string {
@@ -857,7 +985,7 @@ type Error struct {
 
 func (x *Error) Reset() {
 	*x = Error{}
-	mi := &file_proto_bridge_proto_msgTypes[11]
+	mi := &file_proto_bridge_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -869,7 +997,7 @@ func (x *Error) String() string {
 func (*Error) ProtoMessage() {}
 
 func (x *Error) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_bridge_proto_msgTypes[11]
+	mi := &file_proto_bridge_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -882,7 +1010,7 @@ func (x *Error) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Error.ProtoReflect.Descriptor instead.
 func (*Error) Descriptor() ([]byte, []int) {
-	return file_proto_bridge_proto_rawDescGZIP(), []int{11}
+	return file_proto_bridge_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Error) GetCode() string {
@@ -903,7 +1031,7 @@ var File_proto_bridge_proto protoreflect.FileDescriptor
 
 const file_proto_bridge_proto_rawDesc = "" +
 	"\n" +
-	"\x12proto/bridge.proto\x12\x0fpocketbridge.v1\"\xb5\x06\n" +
+	"\x12proto/bridge.proto\x12\x0fpocketbridge.v1\"\xc4\a\n" +
 	"\bEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12$\n" +
 	"\x0efrom_device_id\x18\x02 \x01(\tR\ffromDeviceId\x12 \n" +
@@ -914,6 +1042,7 @@ const file_proto_bridge_proto_rawDesc = "" +
 	" \x01(\v2\x1c.pocketbridge.v1.DeviceHelloH\x00R\vdeviceHello\x12>\n" +
 	"\vnotify_push\x18\v \x01(\v2\x1b.pocketbridge.v1.NotifyPushH\x00R\n" +
 	"notifyPush\x12G\n" +
+	"\x0eauth_challenge\x18\f \x01(\v2\x1e.pocketbridge.v1.AuthChallengeH\x00R\rauthChallenge\x12G\n" +
 	"\x0eclipboard_push\x18\r \x01(\v2\x1e.pocketbridge.v1.ClipboardPushH\x00R\rclipboardPush\x12G\n" +
 	"\x0eclipboard_pull\x18\x0e \x01(\v2\x1e.pocketbridge.v1.ClipboardPullH\x00R\rclipboardPull\x12J\n" +
 	"\x0fclipboard_value\x18\x0f \x01(\v2\x1f.pocketbridge.v1.ClipboardValueH\x00R\x0eclipboardValue\x12;\n" +
@@ -925,13 +1054,19 @@ const file_proto_bridge_proto_rawDesc = "" +
 	"\vtask_status\x18\x13 \x01(\v2\x1b.pocketbridge.v1.TaskStatusH\x00R\n" +
 	"taskStatus\x12(\n" +
 	"\x03ack\x18\x14 \x01(\v2\x14.pocketbridge.v1.AckH\x00R\x03ack\x12.\n" +
-	"\x05error\x18\x15 \x01(\v2\x16.pocketbridge.v1.ErrorH\x00R\x05errorB\t\n" +
+	"\x05error\x18\x15 \x01(\v2\x16.pocketbridge.v1.ErrorH\x00R\x05error\x12D\n" +
+	"\rauth_response\x18\x16 \x01(\v2\x1d.pocketbridge.v1.AuthResponseH\x00R\fauthResponseB\t\n" +
 	"\apayload\"v\n" +
 	"\vDeviceHello\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1f\n" +
 	"\vdevice_type\x18\x02 \x01(\tR\n" +
 	"deviceType\x12)\n" +
-	"\x10protocol_version\x18\x03 \x01(\tR\x0fprotocolVersion\"h\n" +
+	"\x10protocol_version\x18\x03 \x01(\tR\x0fprotocolVersion\"T\n" +
+	"\rAuthChallenge\x12%\n" +
+	"\x0echallenge_data\x18\x01 \x01(\fR\rchallengeData\x12\x1c\n" +
+	"\talgorithm\x18\x02 \x01(\tR\talgorithm\",\n" +
+	"\fAuthResponse\x12\x1c\n" +
+	"\tsignature\x18\x01 \x01(\fR\tsignature\"h\n" +
 	"\n" +
 	"NotifyPush\x12\x14\n" +
 	"\x05title\x18\x01 \x01(\tR\x05title\x12\x12\n" +
@@ -988,38 +1123,42 @@ func file_proto_bridge_proto_rawDescGZIP() []byte {
 	return file_proto_bridge_proto_rawDescData
 }
 
-var file_proto_bridge_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_proto_bridge_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_proto_bridge_proto_goTypes = []any{
 	(*Envelope)(nil),       // 0: pocketbridge.v1.Envelope
 	(*DeviceHello)(nil),    // 1: pocketbridge.v1.DeviceHello
-	(*NotifyPush)(nil),     // 2: pocketbridge.v1.NotifyPush
-	(*ClipboardPush)(nil),  // 3: pocketbridge.v1.ClipboardPush
-	(*ClipboardPull)(nil),  // 4: pocketbridge.v1.ClipboardPull
-	(*ClipboardValue)(nil), // 5: pocketbridge.v1.ClipboardValue
-	(*FileOffer)(nil),      // 6: pocketbridge.v1.FileOffer
-	(*FileChunk)(nil),      // 7: pocketbridge.v1.FileChunk
-	(*FileDone)(nil),       // 8: pocketbridge.v1.FileDone
-	(*TaskStatus)(nil),     // 9: pocketbridge.v1.TaskStatus
-	(*Ack)(nil),            // 10: pocketbridge.v1.Ack
-	(*Error)(nil),          // 11: pocketbridge.v1.Error
+	(*AuthChallenge)(nil),  // 2: pocketbridge.v1.AuthChallenge
+	(*AuthResponse)(nil),   // 3: pocketbridge.v1.AuthResponse
+	(*NotifyPush)(nil),     // 4: pocketbridge.v1.NotifyPush
+	(*ClipboardPush)(nil),  // 5: pocketbridge.v1.ClipboardPush
+	(*ClipboardPull)(nil),  // 6: pocketbridge.v1.ClipboardPull
+	(*ClipboardValue)(nil), // 7: pocketbridge.v1.ClipboardValue
+	(*FileOffer)(nil),      // 8: pocketbridge.v1.FileOffer
+	(*FileChunk)(nil),      // 9: pocketbridge.v1.FileChunk
+	(*FileDone)(nil),       // 10: pocketbridge.v1.FileDone
+	(*TaskStatus)(nil),     // 11: pocketbridge.v1.TaskStatus
+	(*Ack)(nil),            // 12: pocketbridge.v1.Ack
+	(*Error)(nil),          // 13: pocketbridge.v1.Error
 }
 var file_proto_bridge_proto_depIdxs = []int32{
 	1,  // 0: pocketbridge.v1.Envelope.device_hello:type_name -> pocketbridge.v1.DeviceHello
-	2,  // 1: pocketbridge.v1.Envelope.notify_push:type_name -> pocketbridge.v1.NotifyPush
-	3,  // 2: pocketbridge.v1.Envelope.clipboard_push:type_name -> pocketbridge.v1.ClipboardPush
-	4,  // 3: pocketbridge.v1.Envelope.clipboard_pull:type_name -> pocketbridge.v1.ClipboardPull
-	5,  // 4: pocketbridge.v1.Envelope.clipboard_value:type_name -> pocketbridge.v1.ClipboardValue
-	6,  // 5: pocketbridge.v1.Envelope.file_offer:type_name -> pocketbridge.v1.FileOffer
-	7,  // 6: pocketbridge.v1.Envelope.file_chunk:type_name -> pocketbridge.v1.FileChunk
-	8,  // 7: pocketbridge.v1.Envelope.file_done:type_name -> pocketbridge.v1.FileDone
-	9,  // 8: pocketbridge.v1.Envelope.task_status:type_name -> pocketbridge.v1.TaskStatus
-	10, // 9: pocketbridge.v1.Envelope.ack:type_name -> pocketbridge.v1.Ack
-	11, // 10: pocketbridge.v1.Envelope.error:type_name -> pocketbridge.v1.Error
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	4,  // 1: pocketbridge.v1.Envelope.notify_push:type_name -> pocketbridge.v1.NotifyPush
+	2,  // 2: pocketbridge.v1.Envelope.auth_challenge:type_name -> pocketbridge.v1.AuthChallenge
+	5,  // 3: pocketbridge.v1.Envelope.clipboard_push:type_name -> pocketbridge.v1.ClipboardPush
+	6,  // 4: pocketbridge.v1.Envelope.clipboard_pull:type_name -> pocketbridge.v1.ClipboardPull
+	7,  // 5: pocketbridge.v1.Envelope.clipboard_value:type_name -> pocketbridge.v1.ClipboardValue
+	8,  // 6: pocketbridge.v1.Envelope.file_offer:type_name -> pocketbridge.v1.FileOffer
+	9,  // 7: pocketbridge.v1.Envelope.file_chunk:type_name -> pocketbridge.v1.FileChunk
+	10, // 8: pocketbridge.v1.Envelope.file_done:type_name -> pocketbridge.v1.FileDone
+	11, // 9: pocketbridge.v1.Envelope.task_status:type_name -> pocketbridge.v1.TaskStatus
+	12, // 10: pocketbridge.v1.Envelope.ack:type_name -> pocketbridge.v1.Ack
+	13, // 11: pocketbridge.v1.Envelope.error:type_name -> pocketbridge.v1.Error
+	3,  // 12: pocketbridge.v1.Envelope.auth_response:type_name -> pocketbridge.v1.AuthResponse
+	13, // [13:13] is the sub-list for method output_type
+	13, // [13:13] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_proto_bridge_proto_init() }
@@ -1030,6 +1169,7 @@ func file_proto_bridge_proto_init() {
 	file_proto_bridge_proto_msgTypes[0].OneofWrappers = []any{
 		(*Envelope_DeviceHello)(nil),
 		(*Envelope_NotifyPush)(nil),
+		(*Envelope_AuthChallenge)(nil),
 		(*Envelope_ClipboardPush)(nil),
 		(*Envelope_ClipboardPull)(nil),
 		(*Envelope_ClipboardValue)(nil),
@@ -1039,6 +1179,7 @@ func file_proto_bridge_proto_init() {
 		(*Envelope_TaskStatus)(nil),
 		(*Envelope_Ack)(nil),
 		(*Envelope_Error)(nil),
+		(*Envelope_AuthResponse)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1046,7 +1187,7 @@ func file_proto_bridge_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bridge_proto_rawDesc), len(file_proto_bridge_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

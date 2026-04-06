@@ -6,7 +6,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.util.Base64
 import android.util.Log
+import com.google.protobuf.ByteString
 import com.google.protobuf.InvalidProtocolBufferException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,7 +22,12 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import org.bouncycastle.crypto.params.Ed25519PrivateKeyParameters
+import org.bouncycastle.crypto.signers.Ed25519Signer
+import org.bouncycastle.crypto.util.PrivateKeyFactory
 import pocketbridge.v1.Bridge.Ack
+import pocketbridge.v1.Bridge.AuthChallenge
+import pocketbridge.v1.Bridge.AuthResponse
 import pocketbridge.v1.Bridge.ClipboardPull
 import pocketbridge.v1.Bridge.ClipboardPush
 import pocketbridge.v1.Bridge.ClipboardValue
@@ -45,6 +52,10 @@ class BridgeService : Service() {
 
     @Volatile
     private var socket: WebSocket? = null
+
+    @Volatile
+    private var authenticated = false
+
     private var loopJob: Job? = null
     private var currentConfig: BridgeConfig? = null
 
@@ -88,6 +99,7 @@ class BridgeService : Service() {
             return
         }
         running = true
+        authenticated = false
         startForeground(
             NotificationHelper.SERVICE_NOTIFICATION_ID,
             NotificationHelper.buildServiceNotification(this, connected = false),
@@ -104,6 +116,7 @@ class BridgeService : Service() {
 
     private fun stopBridge() {
         running = false
+        authenticated = false
         loopJob?.cancel()
         loopJob = null
         socket?.close(1000, "stop requested")
@@ -119,16 +132,17 @@ class BridgeService : Service() {
 
     private suspend fun connectLoop(config: BridgeConfig) {
         while (running) {
+            authenticated = false
             BridgeRuntime.appendLog("正在连接 ${config.relayUrl} as ${config.deviceId}")
             val request = Request.Builder()
-                .url("${config.relayUrl}?device_id=${config.deviceId}")
-                .header("Authorization", "Bearer ${config.token}")
+                .url(config.relayUrl)
                 .build()
 
             val listener = BridgeSocketListener(config)
             val ws = httpClient.newWebSocket(request, listener)
             socket = ws
             listener.awaitClosed()
+            authenticated = false
 
             if (!running) {
                 break
@@ -170,12 +184,11 @@ class BridgeService : Service() {
                     .build(),
             )
             .build()
-        val bytes = env.toByteArray()
-        val ok = socket?.send(okio.ByteString.of(*bytes)) == true
+        val ok = sendAuthenticatedEnvelope(env)
         if (ok) {
             BridgeRuntime.appendLog("已发送通知到 $target: $title")
         } else {
-            BridgeRuntime.appendLog("发送通知失败：当前未连接 relay")
+            BridgeRuntime.appendLog("发送通知失败：当前未完成 relay 认证")
         }
     }
 
@@ -202,11 +215,11 @@ class BridgeService : Service() {
                     .build(),
             )
             .build()
-        val ok = socket?.send(okio.ByteString.of(*env.toByteArray())) == true
+        val ok = sendAuthenticatedEnvelope(env)
         if (ok) {
             BridgeRuntime.appendLog("已发送剪贴板到 $target: ${previewText(text)}")
         } else {
-            BridgeRuntime.appendLog("发送剪贴板失败：当前未连接 relay")
+            BridgeRuntime.appendLog("发送剪贴板失败：当前未完成 relay 认证")
         }
     }
 
@@ -227,12 +240,19 @@ class BridgeService : Service() {
                     .build(),
             )
             .build()
-        val ok = socket?.send(okio.ByteString.of(*env.toByteArray())) == true
+        val ok = sendAuthenticatedEnvelope(env)
         if (ok) {
             BridgeRuntime.appendLog("已请求从 $target 拉取剪贴板")
         } else {
-            BridgeRuntime.appendLog("拉取剪贴板失败：当前未连接 relay")
+            BridgeRuntime.appendLog("拉取剪贴板失败：当前未完成 relay 认证")
         }
+    }
+
+    private fun sendAuthenticatedEnvelope(env: Envelope): Boolean {
+        if (!authenticated) {
+            return false
+        }
+        return socket?.send(okio.ByteString.of(*env.toByteArray())) == true
     }
 
     private inner class BridgeSocketListener(
@@ -242,16 +262,12 @@ class BridgeService : Service() {
         var lastError: String? = null
 
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            BridgeRuntime.appendLog("连接已建立")
+            authenticated = false
+            BridgeRuntime.appendLog("连接已建立，开始设备认证")
             BridgeRuntime.updateConnection(
-                connected = true,
+                connected = false,
                 deviceId = config.deviceId,
                 relayUrl = config.relayUrl,
-            )
-            val manager = getSystemService(android.app.NotificationManager::class.java)
-            manager.notify(
-                NotificationHelper.SERVICE_NOTIFICATION_ID,
-                NotificationHelper.buildServiceNotification(this@BridgeService, connected = true),
             )
 
             val hello = Envelope.newBuilder()
@@ -266,16 +282,37 @@ class BridgeService : Service() {
                         .build(),
                 )
                 .build()
-            webSocket.send(okio.ByteString.of(*hello.toByteArray()))
+            if (!webSocket.send(okio.ByteString.of(*hello.toByteArray()))) {
+                lastError = "send hello failed"
+                BridgeRuntime.appendLog("发送 device hello 失败")
+                webSocket.close(4000, "hello failed")
+            }
         }
 
         override fun onMessage(webSocket: WebSocket, bytes: okio.ByteString) {
             try {
                 val env = Envelope.parseFrom(bytes.toByteArray())
                 when (env.payloadCase) {
+                    Envelope.PayloadCase.AUTH_CHALLENGE -> {
+                        handleAuthChallenge(webSocket, config, env.authChallenge)
+                    }
                     Envelope.PayloadCase.ACK -> {
                         val ack: Ack = env.ack
                         BridgeRuntime.appendLog("收到 ACK: ${ack.ackId}")
+                        if (ack.ackId == helloAckId(config.deviceId)) {
+                            authenticated = true
+                            BridgeRuntime.appendLog("设备认证成功")
+                            BridgeRuntime.updateConnection(
+                                connected = true,
+                                deviceId = config.deviceId,
+                                relayUrl = config.relayUrl,
+                            )
+                            val manager = getSystemService(android.app.NotificationManager::class.java)
+                            manager.notify(
+                                NotificationHelper.SERVICE_NOTIFICATION_ID,
+                                NotificationHelper.buildServiceNotification(this@BridgeService, connected = true),
+                            )
+                        }
                     }
                     Envelope.PayloadCase.NOTIFY_PUSH -> {
                         val msg = env.notifyPush
@@ -322,11 +359,11 @@ class BridgeService : Service() {
                                     .build(),
                             )
                             .build()
-                        val ok = socket?.send(okio.ByteString.of(*reply.toByteArray())) == true
+                        val ok = sendAuthenticatedEnvelope(reply)
                         if (ok) {
                             BridgeRuntime.appendLog("已响应 ${env.fromDeviceId} 的剪贴板拉取请求")
                         } else {
-                            BridgeRuntime.appendLog("响应剪贴板拉取失败：当前未连接 relay")
+                            BridgeRuntime.appendLog("响应剪贴板拉取失败：当前未完成 relay 认证")
                         }
                     }
                     Envelope.PayloadCase.CLIPBOARD_VALUE -> {
@@ -335,6 +372,7 @@ class BridgeService : Service() {
                         BridgeRuntime.appendLog("剪贴板 from=${env.fromDeviceId} 已同步到本机: ${previewText(msg.text)}")
                     }
                     Envelope.PayloadCase.ERROR -> {
+                        lastError = "${env.error.code} ${env.error.message}"
                         BridgeRuntime.appendLog("relay 错误: ${env.error.code} ${env.error.message}")
                     }
                     else -> {
@@ -347,17 +385,20 @@ class BridgeService : Service() {
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            authenticated = false
             lastError = "closing code=$code reason=$reason"
             webSocket.close(code, reason)
             closed.complete(Unit)
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            authenticated = false
             lastError = "closed code=$code reason=$reason"
             closed.complete(Unit)
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            authenticated = false
             lastError = t.message ?: t.javaClass.simpleName
             BridgeRuntime.appendLog("连接失败: ${lastError}")
             Log.e("PocketBridge", "websocket failure", t)
@@ -366,6 +407,36 @@ class BridgeService : Service() {
 
         suspend fun awaitClosed() {
             closed.await()
+        }
+
+        private fun handleAuthChallenge(webSocket: WebSocket, config: BridgeConfig, challenge: AuthChallenge) {
+            try {
+                if (challenge.algorithm != ALGORITHM_ED25519) {
+                    throw IllegalArgumentException("unsupported auth algorithm: ${challenge.algorithm}")
+                }
+                val signature = signChallenge(config.privateKeyBase64, challenge)
+                val response = Envelope.newBuilder()
+                    .setId(nextId())
+                    .setFromDeviceId(config.deviceId)
+                    .setToDeviceId("relay")
+                    .setUnixMs(System.currentTimeMillis())
+                    .setAuthResponse(
+                        AuthResponse.newBuilder()
+                            .setSignature(ByteString.copyFrom(signature))
+                            .build(),
+                    )
+                    .build()
+                if (webSocket.send(okio.ByteString.of(*response.toByteArray()))) {
+                    BridgeRuntime.appendLog("已发送设备签名响应")
+                } else {
+                    throw IllegalStateException("websocket send returned false")
+                }
+            } catch (e: Exception) {
+                authenticated = false
+                lastError = e.message ?: e.javaClass.simpleName
+                BridgeRuntime.appendLog("认证失败: ${lastError}")
+                webSocket.close(4001, "auth failed")
+            }
         }
     }
 
@@ -384,6 +455,7 @@ class BridgeService : Service() {
     }
 
     companion object {
+        private const val ALGORITHM_ED25519 = "ed25519"
         private const val ACTION_START = "top.miceworld.pocketbridge.action.START"
         private const val ACTION_STOP = "top.miceworld.pocketbridge.action.STOP"
         private const val ACTION_SEND_NOTIFY = "top.miceworld.pocketbridge.action.SEND_NOTIFY"
@@ -427,6 +499,20 @@ class BridgeService : Service() {
         }
 
         private fun nextId(): String = System.currentTimeMillis().toString()
+
+        private fun helloAckId(deviceId: String): String = "hello:$deviceId"
+
+        private fun signChallenge(privateKeyBase64: String, challenge: AuthChallenge): ByteArray {
+            val keyParameter = PrivateKeyFactory.createKey(Base64.decode(privateKeyBase64, Base64.DEFAULT))
+            require(keyParameter is Ed25519PrivateKeyParameters) {
+                "private key is not Ed25519"
+            }
+            val signer = Ed25519Signer()
+            signer.init(true, keyParameter)
+            val challengeBytes = challenge.challengeData.toByteArray()
+            signer.update(challengeBytes, 0, challengeBytes.size)
+            return signer.generateSignature()
+        }
 
         private fun previewText(text: String): String {
             val normalized = text.replace("\n", "\\n")

@@ -56,6 +56,7 @@
 
 当前已经实现的命令：
 
+- `pb keygen`
 - `pb status`
 - `pb notify <target> <title> <body>`
 - `pb clip push <target> [text]`
@@ -68,8 +69,9 @@
 - Android 端当前通过前台服务常驻 WebSocket 收消息
 - 剪贴板当前是显式 `push/pull`，不做后台自动双向覆盖
 - laptop 侧当前通过 `wl-copy` / `wl-paste` 桥接系统剪贴板
-- 当前认证仍然是 `device_id + static token`
-- 设备密钥 / challenge-response 仍是后续里程碑，不在这一版里
+- 当前认证已经切到 `Ed25519 challenge-response`
+- relay 侧只保存 `public_key_base64`
+- agent / Android 侧只保存 `private_key_base64`
 
 ## Quickstart
 
@@ -79,6 +81,19 @@
 make proto
 go build ./...
 ```
+
+如果要生成自己的设备密钥：
+
+```bash
+go run ./cmd/pb keygen
+```
+
+返回结果里：
+
+- `public_key_base64` 写进 relay 配置
+- `private_key_base64` 写进对应设备配置
+
+仓库里的 `configs/*.example.json` 和 Android 默认值已经带了一组仅用于本地 demo 的开发密钥。
 
 本地 demo：
 
@@ -109,7 +124,7 @@ adb shell am start -n top.miceworld.pocketbridge/.MainActivity
 
 - relay URL: `ws://10.0.2.2:18080/ws`
 - device id: `phone`
-- token: `change-me-phone`
+- private key: 使用与 `configs/relay.example.json` 匹配的开发私钥
 - notify target: `laptop`
 
 已验证的 live path：
@@ -124,3 +139,4 @@ adb shell am start -n top.miceworld.pocketbridge/.MainActivity
 - 当前 debug App 为了 AVD 直连宿主机 relay，显式允许了明文 `ws://10.0.2.2`
 - 这只是本地开发路径；公网部署应切到 `wss://` + TLS
 - Android 侧剪贴板目前按用户显式动作工作，符合“前台读写、不要后台自动覆盖”的边界
+- 真实部署时请用 `pb keygen` 重新生成每台设备的独立密钥，不要继续使用仓库里的 demo 密钥

@@ -20,7 +20,7 @@
 - `M1` 已完成：`relay + agentd + pb` 最小链路已实现并提交
 - `M2` 已跑通 Android demo：2026-04-06 在 Android 15 AVD 上完成双向通知闭环
 - `M3` 已跑通显式剪贴板 demo：2026-04-06 在 Wayland laptop + Android 15 AVD 上完成双向 `clip push/pull`
-- 当前认证仍是静态 token，设备密钥认证还没开始做
+- 设备密钥认证已完成：2026-04-06 切到 `Ed25519 challenge-response`
 
 ## 里程碑
 
@@ -131,6 +131,13 @@
 - Wire protocol: protobuf
 - Real-time transport: WebSocket
 - Android notification path: 在线时 WebSocket，离线后台视需要加 FCM
+
+## 已完成的安全收口
+
+- relay 配置只保存设备公钥
+- agent 和 Android 只保存对应设备私钥
+- 连接握手固定为 `device_hello -> auth_challenge -> auth_response -> ack`
+- `pb keygen` 可直接生成一对可落盘的 Base64 设备密钥
 
 ## 当前优先级
 

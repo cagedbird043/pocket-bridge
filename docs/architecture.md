@@ -16,7 +16,7 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 - 显式剪贴板 `push/pull` 已落地到 CLI、agent 和 Android demo
 - 2026-04-06 已在 Android 15 AVD 上验证双向通知闭环
 - 2026-04-06 已在 Wayland laptop + Android 15 AVD 上验证双向剪贴板闭环
-- 当前认证仍是 `device_id + static token`
+- 当前认证已切到 `Ed25519 challenge-response`
 - 当前 debug App 允许明文 `ws://10.0.2.2`，只用于 AVD 连接宿主机 relay 的开发路径
 
 ## 组件边界
@@ -98,6 +98,6 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 
 ## 当前与目标的差距
 
-- 设备密钥认证尚未落地，当前仍是静态 token
 - 小文件投递仍未实现
 - 明文 `ws` 只应存在于本地开发；公网环境必须收敛到 TLS
+- 仓库里的示例密钥只用于 demo，真实部署仍需替换为独立设备密钥

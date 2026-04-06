@@ -2,10 +2,10 @@
   "listen_addr": "127.0.0.1:18080",
   "devices": {
     "laptop": {
-      "token": "change-me-laptop"
+      "public_key_base64": "MCowBQYDK2VwAyEAefyu3CJ688PbBCpql0TlEAK04LKTr9hFfPDB1Rd+BOY="
     },
     "phone": {
-      "token": "change-me-phone"
+      "public_key_base64": "MCowBQYDK2VwAyEAw1W7KCvoODVO2VvTNeOpTNQ+bAOqZqebcZKNR7M59WU="
     }
   }
 }

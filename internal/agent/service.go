@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	pocketbridgev1 "github.com/cagedbird043/pocket-bridge/gen/go/pocketbridge/v1"
+	"github.com/cagedbird043/pocket-bridge/internal/auth"
 	"github.com/cagedbird043/pocket-bridge/internal/config"
 	"github.com/cagedbird043/pocket-bridge/internal/pbwire"
 	"github.com/gorilla/websocket"
@@ -162,25 +162,33 @@ func (s *Service) runRelayLoop(ctx context.Context) error {
 }
 
 func (s *Service) connectAndServe(ctx context.Context) error {
-	wsURL, err := url.Parse(s.cfg.RelayURL)
-	if err != nil {
-		return fmt.Errorf("parse relay url: %w", err)
-	}
-	query := wsURL.Query()
-	query.Set("device_id", s.cfg.DeviceID)
-	wsURL.RawQuery = query.Encode()
-
-	header := http.Header{}
-	header.Set("Authorization", "Bearer "+s.cfg.Token)
-
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL.String(), header)
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, s.cfg.RelayURL, nil)
 	if err != nil {
 		return fmt.Errorf("dial relay: %w", err)
 	}
 	defer conn.Close()
 
+	if err := s.authenticateRelay(conn); err != nil {
+		return err
+	}
 	s.setConn(conn)
 	defer s.clearConn(conn)
+	log.Printf("agent connected to relay as %s", s.cfg.DeviceID)
+
+	for {
+		env, err := readEnvelope(conn)
+		if err != nil {
+			return err
+		}
+		s.handleEnvelope(env)
+	}
+}
+
+func (s *Service) authenticateRelay(conn *websocket.Conn) error {
+	privateKey, err := auth.ParsePrivateKeyBase64(s.cfg.PrivateKeyBase64)
+	if err != nil {
+		return fmt.Errorf("parse device private key: %w", err)
+	}
 
 	hello := &pocketbridgev1.Envelope{
 		Id:           nextID(),
@@ -194,27 +202,45 @@ func (s *Service) connectAndServe(ctx context.Context) error {
 			},
 		},
 	}
-	if err := s.sendEnvelope(hello); err != nil {
+	if err := writeEnvelope(conn, hello); err != nil {
+		return fmt.Errorf("send device hello: %w", err)
+	}
+
+	challengeEnv, err := readEnvelope(conn)
+	if err != nil {
+		return fmt.Errorf("read auth challenge: %w", err)
+	}
+	challenge, err := expectAuthChallenge(challengeEnv)
+	if err != nil {
 		return err
 	}
-	s.setState(true, "")
-	log.Printf("agent connected to relay as %s", s.cfg.DeviceID)
-
-	for {
-		msgType, payload, err := conn.ReadMessage()
-		if err != nil {
-			return err
-		}
-		if msgType != websocket.BinaryMessage {
-			continue
-		}
-		env, err := pbwire.UnmarshalEnvelope(payload)
-		if err != nil {
-			log.Printf("agent bad envelope: %v", err)
-			continue
-		}
-		s.handleEnvelope(env)
+	if challenge.Algorithm != auth.AlgorithmEd25519 {
+		return fmt.Errorf("unsupported auth algorithm: %s", challenge.Algorithm)
 	}
+
+	response := &pocketbridgev1.Envelope{
+		Id:           nextID(),
+		FromDeviceId: s.cfg.DeviceID,
+		ToDeviceId:   "relay",
+		UnixMs:       time.Now().UnixMilli(),
+		Payload: &pocketbridgev1.Envelope_AuthResponse{
+			AuthResponse: &pocketbridgev1.AuthResponse{
+				Signature: auth.SignChallenge(privateKey, challenge.ChallengeData),
+			},
+		},
+	}
+	if err := writeEnvelope(conn, response); err != nil {
+		return fmt.Errorf("send auth response: %w", err)
+	}
+
+	ackEnv, err := readEnvelope(conn)
+	if err != nil {
+		return fmt.Errorf("read auth ack: %w", err)
+	}
+	if err := expectHelloAck(ackEnv, s.cfg.DeviceID); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Service) handleEnvelope(env *pocketbridgev1.Envelope) {
@@ -223,6 +249,8 @@ func (s *Service) handleEnvelope(env *pocketbridgev1.Envelope) {
 		log.Printf("agent ack id=%s", msg.Ack.AckId)
 	case *pocketbridgev1.Envelope_Error:
 		log.Printf("agent error code=%s msg=%s", msg.Error.Code, msg.Error.Message)
+	case *pocketbridgev1.Envelope_AuthChallenge, *pocketbridgev1.Envelope_AuthResponse:
+		log.Printf("agent ignored unexpected auth payload after handshake")
 	case *pocketbridgev1.Envelope_NotifyPush:
 		if s.cfg.LogIncoming {
 			log.Printf("notify from=%s topic=%s title=%q body=%q", env.FromDeviceId, msg.NotifyPush.Topic, msg.NotifyPush.Title, msg.NotifyPush.Body)
@@ -644,4 +672,57 @@ func expandPath(path string) string {
 
 func nextID() string {
 	return time.Now().UTC().Format("20060102T150405.000000000")
+}
+
+func readEnvelope(conn *websocket.Conn) (*pocketbridgev1.Envelope, error) {
+	msgType, payload, err := conn.ReadMessage()
+	if err != nil {
+		return nil, err
+	}
+	if msgType != websocket.BinaryMessage {
+		return nil, fmt.Errorf("relay expects binary protobuf messages")
+	}
+	env, err := pbwire.UnmarshalEnvelope(payload)
+	if err != nil {
+		return nil, fmt.Errorf("bad envelope: %w", err)
+	}
+	return env, nil
+}
+
+func writeEnvelope(conn *websocket.Conn, env *pocketbridgev1.Envelope) error {
+	data, err := pbwire.MarshalEnvelope(env)
+	if err != nil {
+		return err
+	}
+	return conn.WriteMessage(websocket.BinaryMessage, data)
+}
+
+func expectAuthChallenge(env *pocketbridgev1.Envelope) (*pocketbridgev1.AuthChallenge, error) {
+	switch payload := env.Payload.(type) {
+	case *pocketbridgev1.Envelope_AuthChallenge:
+		return payload.AuthChallenge, nil
+	case *pocketbridgev1.Envelope_Error:
+		return nil, fmt.Errorf("relay auth error: %s %s", payload.Error.Code, payload.Error.Message)
+	default:
+		return nil, fmt.Errorf("expected auth challenge, got %T", env.Payload)
+	}
+}
+
+func expectHelloAck(env *pocketbridgev1.Envelope, deviceID string) error {
+	switch payload := env.Payload.(type) {
+	case *pocketbridgev1.Envelope_Ack:
+		expected := helloAckID(deviceID)
+		if payload.Ack.AckId != expected {
+			return fmt.Errorf("unexpected auth ack: %s", payload.Ack.AckId)
+		}
+		return nil
+	case *pocketbridgev1.Envelope_Error:
+		return fmt.Errorf("relay auth error: %s %s", payload.Error.Code, payload.Error.Message)
+	default:
+		return fmt.Errorf("expected auth ack, got %T", env.Payload)
+	}
+}
+
+func helloAckID(deviceID string) string {
+	return "hello:" + deviceID
 }

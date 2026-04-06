@@ -1,6 +1,6 @@
 {
   "device_id": "laptop",
-  "token": "change-me-laptop",
+  "private_key_base64": "MC4CAQAwBQYDK2VwBCIEIGunBP+m50jdu6Z3+zi5Yx/X6rAx63sc0lHgI2AjeK3J",
   "relay_url": "ws://127.0.0.1:18080/ws",
   "unix_socket": "/tmp/pocket-bridge-laptop.sock",
   "targets": {

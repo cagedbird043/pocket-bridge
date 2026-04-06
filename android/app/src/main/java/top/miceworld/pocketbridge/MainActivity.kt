@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
         val config = BridgePrefs.load(this)
         binding.relayUrlInput.setText(config.relayUrl)
         binding.deviceIdInput.setText(config.deviceId)
-        binding.tokenInput.setText(config.token)
+        binding.privateKeyInput.setText(config.privateKeyBase64)
         binding.notifyTargetInput.setText("laptop")
     }
 
@@ -117,7 +117,7 @@ class MainActivity : ComponentActivity() {
             BridgeConfig(
                 relayUrl = binding.relayUrlInput.text.toString().trim(),
                 deviceId = binding.deviceIdInput.text.toString().trim(),
-                token = binding.tokenInput.text.toString().trim(),
+                privateKeyBase64 = binding.privateKeyInput.text.toString().trim(),
             ),
         )
     }

@@ -48,6 +48,7 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.protobuf:protobuf-javalite:4.30.2")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }
 

@@ -7,6 +7,7 @@ CLI 必须短、稳定、可脚本化。
 ## 命令草案
 
 ```bash
+pb keygen
 pb status
 pb notify phone "标题" "内容"
 pb clip push phone
@@ -20,6 +21,7 @@ pb task failed "标题" "摘要"
 
 当前已实现：
 
+- `pb keygen`
 - `pb status`
 - `pb notify <target> <title> <body>`
 - `pb clip push <target> [text]`
@@ -32,6 +34,7 @@ pb task failed "标题" "摘要"
 
 ## 行为约束
 
+- `pb keygen` 输出一对 `public_key_base64/private_key_base64`，分别给 relay 和设备使用
 - `notify` 只发结构化通知，不镜像系统通知，也不支持 pull
 - `clip push/pull` 是显式动作，不做后台自动双向覆盖
 - `clip push <target>` 在 laptop 上默认读取本机系统剪贴板；若额外给 text，则直接发送该文本

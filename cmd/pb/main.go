@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cagedbird043/pocket-bridge/internal/auth"
 )
 
 type statusResponse struct {
@@ -43,6 +45,8 @@ func main() {
 	args := flag.Args()[1:]
 
 	switch cmd {
+	case "keygen":
+		handleKeygen()
 	case "status":
 		handleStatus(client)
 	case "notify":
@@ -73,6 +77,22 @@ func main() {
 	default:
 		usage()
 	}
+}
+
+func handleKeygen() {
+	publicKeyBase64, privateKeyBase64, err := auth.GenerateKeyPairBase64()
+	if err != nil {
+		exitErr(err)
+	}
+	out := map[string]string{
+		"public_key_base64":  publicKeyBase64,
+		"private_key_base64": privateKeyBase64,
+	}
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		exitErr(err)
+	}
+	fmt.Println(string(data))
 }
 
 func handleClip(client *http.Client, args []string) {
@@ -184,6 +204,7 @@ func defaultSocketPath() string {
 func usage() {
 	fmt.Fprintln(os.Stderr, "用法:")
 	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] status")
+	fmt.Fprintln(os.Stderr, "  pb keygen")
 	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] notify <target> <title> <body>")
 	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] clip push <target> [text]")
 	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] clip pull <target>")

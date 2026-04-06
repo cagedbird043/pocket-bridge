@@ -12,6 +12,7 @@ message Envelope {
   oneof payload {
     DeviceHello device_hello = 10;
     NotifyPush notify_push = 11;
+    AuthChallenge auth_challenge = 12;
     ClipboardPush clipboard_push = 13;
     ClipboardPull clipboard_pull = 14;
     ClipboardValue clipboard_value = 15;
@@ -21,6 +22,7 @@ message Envelope {
     TaskStatus task_status = 19;
     Ack ack = 20;
     Error error = 21;
+    AuthResponse auth_response = 22;
   }
 }
 
@@ -28,6 +30,15 @@ message DeviceHello {
   string device_id = 1;
   string device_type = 2;
   string protocol_version = 3;
+}
+
+message AuthChallenge {
+  bytes challenge_data = 1;
+  string algorithm = 2;
+}
+
+message AuthResponse {
+  bytes signature = 1;
 }
 
 message NotifyPush {
