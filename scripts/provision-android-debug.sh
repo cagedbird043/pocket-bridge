@@ -107,16 +107,20 @@ EOF
 
 "${ADB[@]}" wait-for-device
 "${ADB[@]}" shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
-"${ADB[@]}" push "$tmp_xml" /sdcard/Download/pocket_bridge.xml >/dev/null
-"${ADB[@]}" shell "run-as $PACKAGE mkdir -p shared_prefs && run-as $PACKAGE cp /sdcard/Download/pocket_bridge.xml shared_prefs/pocket_bridge.xml && run-as $PACKAGE chmod 600 shared_prefs/pocket_bridge.xml"
-"${ADB[@]}" shell rm -f /sdcard/Download/pocket_bridge.xml >/dev/null 2>&1 || true
+"${ADB[@]}" push "$tmp_xml" /data/local/tmp/pocket_bridge.xml >/dev/null
+"${ADB[@]}" shell "run-as $PACKAGE mkdir -p shared_prefs && run-as $PACKAGE cp /data/local/tmp/pocket_bridge.xml shared_prefs/pocket_bridge.xml && run-as $PACKAGE chmod 600 shared_prefs/pocket_bridge.xml"
+"${ADB[@]}" shell rm -f /data/local/tmp/pocket_bridge.xml >/dev/null 2>&1 || true
 
 if (( START_APP )); then
   "${ADB[@]}" shell pm grant "$PACKAGE" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 || true
-  "${ADB[@]}" shell am start -n "$PACKAGE/.MainActivity" >/dev/null
-  "${ADB[@]}" shell am start-foreground-service \
-    -n "$PACKAGE/.bridge.BridgeService" \
-    -a top.miceworld.pocketbridge.action.START >/dev/null
+  "${ADB[@]}" shell am start -S -W \
+    -n "$PACKAGE/.MainActivity" \
+    -a top.miceworld.pocketbridge.action.PROVISION \
+    --es relay_url "$RELAY_URL" \
+    --es device_id "$DEVICE_ID" \
+    --es private_key_base64 "$PRIVATE_KEY_BASE64" \
+    --es notify_target "$NOTIFY_TARGET" \
+    --ez auto_start true >/dev/null
 fi
 
 echo "已写入 $PACKAGE 调试配置: relay_url=$RELAY_URL device_id=$DEVICE_ID notify_target=$NOTIFY_TARGET"

@@ -271,26 +271,46 @@ class BridgeService : Service() {
     }
 
     private fun syncPushToken(config: BridgeConfig) {
+        val cachedToken = BridgePrefs.loadFcmToken(this)
+        if (cachedToken.isNotBlank()) {
+            sendPushTokenUpdate(config, cachedToken, source = "cached")
+        }
+
         PushBridge.fetchAndStoreToken(this) { token ->
-            val env = Envelope.newBuilder()
-                .setId(nextId())
-                .setFromDeviceId(config.deviceId)
-                .setUnixMs(System.currentTimeMillis())
-                .setPushTokenUpdate(
-                    PushTokenUpdate.newBuilder()
-                        .setProvider(PushBridge.PROVIDER_FCM)
-                        .setToken(token)
-                        .setPlatform("android")
-                        .setPackageName(packageName)
-                        .build(),
-                )
-                .build()
-            val ok = sendAuthenticatedEnvelope(env)
-            if (ok) {
-                BridgeRuntime.appendLog("已向 relay 同步 FCM token")
-            } else {
-                BridgeRuntime.appendLog("同步 FCM token 失败：当前未完成 relay 认证")
+            if (token != cachedToken) {
+                sendPushTokenUpdate(config, token, source = "fresh")
             }
+        }
+    }
+
+    private fun sendPushTokenUpdate(
+        config: BridgeConfig,
+        token: String,
+        source: String,
+    ) {
+        if (config.notifyTarget.isBlank()) {
+            BridgeRuntime.appendLog("同步 FCM token 失败 ($source)：notify target 为空")
+            return
+        }
+        val env = Envelope.newBuilder()
+            .setId(nextId())
+            .setFromDeviceId(config.deviceId)
+            .setToDeviceId(config.notifyTarget)
+            .setUnixMs(System.currentTimeMillis())
+            .setPushTokenUpdate(
+                PushTokenUpdate.newBuilder()
+                    .setProvider(PushBridge.PROVIDER_FCM)
+                    .setToken(token)
+                    .setPlatform("android")
+                    .setPackageName(packageName)
+                    .build(),
+            )
+            .build()
+        val ok = sendAuthenticatedEnvelope(env)
+        if (ok) {
+            BridgeRuntime.appendLog("已向 ${config.notifyTarget} 同步 FCM token ($source)")
+        } else {
+            BridgeRuntime.appendLog("同步 FCM token 失败 ($source)：当前未完成 relay 认证")
         }
     }
 

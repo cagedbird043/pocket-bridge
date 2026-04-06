@@ -9,14 +9,13 @@ import (
 type RelayConfig struct {
 	ListenAddr string                 `json:"listen_addr"`
 	Devices    map[string]RelayDevice `json:"devices"`
-	FCM        *RelayFCMConfig        `json:"fcm,omitempty"`
 }
 
 type RelayDevice struct {
 	PublicKeyBase64 string `json:"public_key_base64"`
 }
 
-type RelayFCMConfig struct {
+type FCMConfig struct {
 	ProjectID       string `json:"project_id"`
 	CredentialsFile string `json:"credentials_file,omitempty"`
 	TokenStorePath  string `json:"token_store_path"`
@@ -30,6 +29,7 @@ type AgentConfig struct {
 	Targets               map[string]string `json:"targets"`
 	IncomingNotifyCommand []string          `json:"incoming_notify_command"`
 	LogIncoming           bool              `json:"log_incoming"`
+	FCM                   *FCMConfig        `json:"fcm,omitempty"`
 }
 
 func LoadRelayConfig(path string) (*RelayConfig, error) {
@@ -46,14 +46,6 @@ func LoadRelayConfig(path string) (*RelayConfig, error) {
 	for deviceID, device := range cfg.Devices {
 		if device.PublicKeyBase64 == "" {
 			return nil, fmt.Errorf("relay config missing public_key_base64 for device %s", deviceID)
-		}
-	}
-	if cfg.FCM != nil {
-		if cfg.FCM.ProjectID == "" {
-			return nil, fmt.Errorf("relay config missing fcm.project_id")
-		}
-		if cfg.FCM.TokenStorePath == "" {
-			return nil, fmt.Errorf("relay config missing fcm.token_store_path")
 		}
 	}
 	return &cfg, nil
@@ -78,6 +70,14 @@ func LoadAgentConfig(path string) (*AgentConfig, error) {
 	}
 	if cfg.Targets == nil {
 		cfg.Targets = map[string]string{}
+	}
+	if cfg.FCM != nil {
+		if cfg.FCM.ProjectID == "" {
+			return nil, fmt.Errorf("agent config missing fcm.project_id")
+		}
+		if cfg.FCM.TokenStorePath == "" {
+			return nil, fmt.Errorf("agent config missing fcm.token_store_path")
+		}
 	}
 	return &cfg, nil
 }

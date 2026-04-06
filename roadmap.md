@@ -130,7 +130,7 @@
 - Android: Kotlin
 - Wire protocol: protobuf
 - Real-time transport: WebSocket
-- Android notification path: 在线时 WebSocket，离线后台视需要加 FCM
+- Android notification path: 在线时 WebSocket，离线后台由 laptop 视需要直连 FCM
 
 ## 已完成的安全收口
 

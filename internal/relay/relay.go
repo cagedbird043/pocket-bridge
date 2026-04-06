@@ -2,7 +2,6 @@ package relay
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -18,8 +17,6 @@ import (
 type Server struct {
 	cfg      *config.RelayConfig
 	upgrader websocket.Upgrader
-	push     pushSender
-	pushes   *pushRegistry
 
 	mu      sync.RWMutex
 	clients map[string]*clientConn
@@ -32,30 +29,11 @@ type clientConn struct {
 }
 
 func New(cfg *config.RelayConfig) (*Server, error) {
-	var (
-		pushes *pushRegistry
-		push   pushSender
-		err    error
-	)
-
-	if cfg.FCM != nil {
-		pushes, err = newPushRegistry(cfg.FCM.TokenStorePath)
-		if err != nil {
-			return nil, err
-		}
-		push, err = newFCMSender(cfg.FCM)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return &Server{
 		cfg: cfg,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
-		push:    push,
-		pushes:  pushes,
 		clients: make(map[string]*clientConn),
 	}, nil
 }
@@ -126,18 +104,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			env.UnixMs = time.Now().UnixMilli()
 		}
 
-		switch payload := env.Payload.(type) {
+		switch env.Payload.(type) {
 		case *pocketbridgev1.Envelope_DeviceHello, *pocketbridgev1.Envelope_AuthChallenge, *pocketbridgev1.Envelope_AuthResponse:
 			_ = s.sendError(cc, env.Id, "unexpected_auth_payload", "auth payload is only allowed during handshake")
-			continue
-		case *pocketbridgev1.Envelope_PushTokenUpdate:
-			if err := s.handlePushTokenUpdate(deviceID, payload.PushTokenUpdate); err != nil {
-				_ = s.sendError(cc, env.Id, "push_token_update_failed", err.Error())
-				continue
-			}
-			if err := s.sendAck(cc, env.Id); err != nil {
-				return
-			}
 			continue
 		default:
 			if env.ToDeviceId == "" {
@@ -146,17 +115,6 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			}
 			target := s.lookup(env.ToDeviceId)
 			if target == nil {
-				delivered, err := s.deliverOfflinePush(env)
-				if err != nil {
-					_ = s.sendError(cc, env.Id, "push_delivery_failed", err.Error())
-					continue
-				}
-				if delivered {
-					if err := s.sendAck(cc, env.Id); err != nil {
-						return
-					}
-					continue
-				}
 				_ = s.sendError(cc, env.Id, "target_offline", "target device is not connected")
 				continue
 			}
@@ -169,45 +127,6 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-}
-
-func (s *Server) handlePushTokenUpdate(deviceID string, update *pocketbridgev1.PushTokenUpdate) error {
-	if update == nil {
-		return fmt.Errorf("push token update payload is nil")
-	}
-	if s.pushes == nil {
-		return nil
-	}
-	if err := s.pushes.Upsert(deviceID, update); err != nil {
-		return err
-	}
-	log.Printf("relay stored push token: device=%s provider=%s platform=%s", deviceID, update.Provider, update.Platform)
-	return nil
-}
-
-func (s *Server) deliverOfflinePush(env *pocketbridgev1.Envelope) (bool, error) {
-	if s.push == nil || s.pushes == nil {
-		return false, nil
-	}
-
-	msg, ok := pushMessageFromEnvelope(env)
-	if !ok {
-		return false, nil
-	}
-
-	target, ok := s.pushes.Lookup(env.ToDeviceId)
-	if !ok {
-		return false, nil
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := s.push.Send(ctx, target, msg); err != nil {
-		return false, err
-	}
-	log.Printf("relay delivered offline push: target=%s provider=%s kind=%s", env.ToDeviceId, target.Provider, msg.Kind)
-	return true, nil
 }
 
 func (s *Server) authenticate(cc *clientConn) (string, error) {

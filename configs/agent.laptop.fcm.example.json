@@ -1,0 +1,18 @@
+{
+  "device_id": "laptop",
+  "private_key_base64": "MC4CAQAwBQYDK2VwBCIEIGunBP+m50jdu6Z3+zi5Yx/X6rAx63sc0lHgI2AjeK3J",
+  "relay_url": "ws://127.0.0.1:18080/ws",
+  "unix_socket": "/tmp/pocket-bridge-laptop.sock",
+  "targets": {
+    "phone": "phone"
+  },
+  "incoming_notify_command": [
+    "notify-send"
+  ],
+  "log_incoming": true,
+  "fcm": {
+    "project_id": "your-firebase-project-id",
+    "credentials_file": "/etc/pocket-bridge/firebase-service-account.json",
+    "token_store_path": "~/.local/state/pocket-bridge/fcm-tokens.json"
+  }
+}

@@ -1,4 +1,4 @@
-package relay
+package push
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 )
 
 const (
-	pushProviderFCM = "fcm"
+	ProviderFCM = "fcm"
 
 	pushDataKind         = "pb_kind"
 	pushDataFromDeviceID = "pb_from_device_id"
@@ -25,11 +26,11 @@ const (
 	pushDataBody         = "pb_body"
 )
 
-type pushSender interface {
-	Send(ctx context.Context, target pushTargetState, msg pushMessage) error
+type Sender interface {
+	Send(ctx context.Context, target TargetState, msg Message) error
 }
 
-type pushTargetState struct {
+type TargetState struct {
 	Provider    string    `json:"provider"`
 	Token       string    `json:"token"`
 	Platform    string    `json:"platform,omitempty"`
@@ -37,13 +38,13 @@ type pushTargetState struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-type pushRegistry struct {
+type Registry struct {
 	path    string
 	mu      sync.RWMutex
-	entries map[string]pushTargetState
+	entries map[string]TargetState
 }
 
-type pushMessage struct {
+type Message struct {
 	Kind         string
 	FromDeviceID string
 	Title        string
@@ -54,10 +55,11 @@ type fcmSender struct {
 	client *messaging.Client
 }
 
-func newPushRegistry(path string) (*pushRegistry, error) {
-	r := &pushRegistry{
+func NewRegistry(path string) (*Registry, error) {
+	path = expandPath(path)
+	r := &Registry{
 		path:    path,
-		entries: make(map[string]pushTargetState),
+		entries: make(map[string]TargetState),
 	}
 	if path == "" {
 		return r, nil
@@ -78,14 +80,14 @@ func newPushRegistry(path string) (*pushRegistry, error) {
 	return r, nil
 }
 
-func (r *pushRegistry) Lookup(deviceID string) (pushTargetState, bool) {
+func (r *Registry) Lookup(deviceID string) (TargetState, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	entry, ok := r.entries[deviceID]
 	return entry, ok
 }
 
-func (r *pushRegistry) Upsert(deviceID string, update *pocketbridgev1.PushTokenUpdate) error {
+func (r *Registry) Upsert(deviceID string, update *pocketbridgev1.PushTokenUpdate) error {
 	if update == nil {
 		return fmt.Errorf("push token update is nil")
 	}
@@ -98,7 +100,7 @@ func (r *pushRegistry) Upsert(deviceID string, update *pocketbridgev1.PushTokenU
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.entries[deviceID] = pushTargetState{
+	r.entries[deviceID] = TargetState{
 		Provider:    update.Provider,
 		Token:       update.Token,
 		Platform:    update.Platform,
@@ -108,14 +110,14 @@ func (r *pushRegistry) Upsert(deviceID string, update *pocketbridgev1.PushTokenU
 	return r.saveLocked()
 }
 
-func (r *pushRegistry) Delete(deviceID string) error {
+func (r *Registry) Delete(deviceID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.entries, deviceID)
 	return r.saveLocked()
 }
 
-func (r *pushRegistry) saveLocked() error {
+func (r *Registry) saveLocked() error {
 	if r.path == "" {
 		return nil
 	}
@@ -136,11 +138,11 @@ func (r *pushRegistry) saveLocked() error {
 	return nil
 }
 
-func newFCMSender(cfg *config.RelayFCMConfig) (*fcmSender, error) {
+func NewFCMSender(cfg *config.FCMConfig) (Sender, error) {
 	ctx := context.Background()
 	opts := []option.ClientOption{}
 	if cfg.CredentialsFile != "" {
-		opts = append(opts, option.WithCredentialsFile(cfg.CredentialsFile))
+		opts = append(opts, option.WithCredentialsFile(expandPath(cfg.CredentialsFile)))
 	}
 	app, err := firebase.NewApp(ctx, &firebase.Config{
 		ProjectID: cfg.ProjectID,
@@ -155,8 +157,8 @@ func newFCMSender(cfg *config.RelayFCMConfig) (*fcmSender, error) {
 	return &fcmSender{client: client}, nil
 }
 
-func (s *fcmSender) Send(ctx context.Context, target pushTargetState, msg pushMessage) error {
-	if target.Provider != pushProviderFCM {
+func (s *fcmSender) Send(ctx context.Context, target TargetState, msg Message) error {
+	if target.Provider != ProviderFCM {
 		return fmt.Errorf("unsupported push provider: %s", target.Provider)
 	}
 	if target.Token == "" {
@@ -181,23 +183,33 @@ func (s *fcmSender) Send(ctx context.Context, target pushTargetState, msg pushMe
 	return nil
 }
 
-func pushMessageFromEnvelope(env *pocketbridgev1.Envelope) (pushMessage, bool) {
+func MessageFromEnvelope(env *pocketbridgev1.Envelope) (Message, bool) {
 	switch payload := env.Payload.(type) {
 	case *pocketbridgev1.Envelope_NotifyPush:
-		return pushMessage{
+		return Message{
 			Kind:         "notify",
 			FromDeviceID: env.FromDeviceId,
 			Title:        payload.NotifyPush.Title,
 			Body:         payload.NotifyPush.Body,
 		}, true
 	case *pocketbridgev1.Envelope_TaskStatus:
-		return pushMessage{
+		return Message{
 			Kind:         "task",
 			FromDeviceID: env.FromDeviceId,
 			Title:        fmt.Sprintf("Codex %s: %s", payload.TaskStatus.Kind, payload.TaskStatus.Title),
 			Body:         payload.TaskStatus.Summary,
 		}, true
 	default:
-		return pushMessage{}, false
+		return Message{}, false
 	}
+}
+
+func expandPath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
 }

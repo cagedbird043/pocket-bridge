@@ -24,7 +24,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	svc := agent.New(cfg)
+	svc, err := agent.New(cfg)
+	if err != nil {
+		log.Fatalf("init agent: %v", err)
+	}
 	if err := svc.Run(ctx); err != nil {
 		log.Fatal(err)
 	}

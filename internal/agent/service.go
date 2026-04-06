@@ -19,6 +19,7 @@ import (
 	"github.com/cagedbird043/pocket-bridge/internal/auth"
 	"github.com/cagedbird043/pocket-bridge/internal/config"
 	"github.com/cagedbird043/pocket-bridge/internal/pbwire"
+	"github.com/cagedbird043/pocket-bridge/internal/push"
 	"github.com/gorilla/websocket"
 )
 
@@ -33,6 +34,10 @@ type Service struct {
 
 	clipboardMu         sync.Mutex
 	pendingClipboardMap map[string]chan clipboardValueResult
+	requestMu           sync.Mutex
+	pendingRequestMap   map[string]chan requestResult
+	push                push.Sender
+	pushes              *push.Registry
 }
 
 type Status struct {
@@ -82,11 +87,31 @@ type clipboardValueResult struct {
 	response ClipboardValueResponse
 }
 
-func New(cfg *config.AgentConfig) *Service {
-	return &Service{
+type requestResult struct {
+	ack   *pocketbridgev1.Ack
+	err   *pocketbridgev1.Error
+	refID string
+}
+
+func New(cfg *config.AgentConfig) (*Service, error) {
+	svc := &Service{
 		cfg:                 cfg,
 		pendingClipboardMap: make(map[string]chan clipboardValueResult),
+		pendingRequestMap:   make(map[string]chan requestResult),
 	}
+	if cfg.FCM != nil {
+		pushes, err := push.NewRegistry(cfg.FCM.TokenStorePath)
+		if err != nil {
+			return nil, err
+		}
+		sender, err := push.NewFCMSender(cfg.FCM)
+		if err != nil {
+			return nil, err
+		}
+		svc.pushes = pushes
+		svc.push = sender
+	}
+	return svc, nil
 }
 
 func (s *Service) Run(ctx context.Context) error {
@@ -246,11 +271,26 @@ func (s *Service) authenticateRelay(conn *websocket.Conn) error {
 func (s *Service) handleEnvelope(env *pocketbridgev1.Envelope) {
 	switch msg := env.Payload.(type) {
 	case *pocketbridgev1.Envelope_Ack:
-		log.Printf("agent ack id=%s", msg.Ack.AckId)
+		if !s.resolveRequest(msg.Ack.AckId, requestResult{ack: msg.Ack, refID: msg.Ack.AckId}) {
+			log.Printf("agent ack id=%s", msg.Ack.AckId)
+		}
 	case *pocketbridgev1.Envelope_Error:
+		if refID, ok := parseRefID(msg.Error.Message); ok && s.resolveRequest(refID, requestResult{err: msg.Error, refID: refID}) {
+			return
+		}
 		log.Printf("agent error code=%s msg=%s", msg.Error.Code, msg.Error.Message)
 	case *pocketbridgev1.Envelope_AuthChallenge, *pocketbridgev1.Envelope_AuthResponse:
 		log.Printf("agent ignored unexpected auth payload after handshake")
+	case *pocketbridgev1.Envelope_PushTokenUpdate:
+		if s.pushes == nil {
+			log.Printf("agent ignored push token from=%s: local FCM sender not configured", env.FromDeviceId)
+			return
+		}
+		if err := s.pushes.Upsert(env.FromDeviceId, msg.PushTokenUpdate); err != nil {
+			log.Printf("push token update from=%s failed: %v", env.FromDeviceId, err)
+			return
+		}
+		log.Printf("agent stored push token: device=%s provider=%s platform=%s", env.FromDeviceId, msg.PushTokenUpdate.Provider, msg.PushTokenUpdate.Platform)
 	case *pocketbridgev1.Envelope_NotifyPush:
 		if s.cfg.LogIncoming {
 			log.Printf("notify from=%s topic=%s title=%q body=%q", env.FromDeviceId, msg.NotifyPush.Topic, msg.NotifyPush.Title, msg.NotifyPush.Body)
@@ -353,7 +393,7 @@ func (s *Service) handleNotify(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	}
-	if err := s.sendEnvelope(env); err != nil {
+	if err := s.sendNotifyEnvelope(env); err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -400,7 +440,7 @@ func (s *Service) handleClipboardPush(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	}
-	if err := s.sendEnvelope(env); err != nil {
+	if err := s.sendNotifyEnvelope(env); err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -441,7 +481,7 @@ func (s *Service) handleClipboardPull(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	}
-	if err := s.sendEnvelope(env); err != nil {
+	if err := s.sendNotifyEnvelope(env); err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -531,6 +571,60 @@ func (s *Service) sendEnvelope(env *pocketbridgev1.Envelope) error {
 	return conn.WriteMessage(websocket.BinaryMessage, data)
 }
 
+func (s *Service) sendNotifyEnvelope(env *pocketbridgev1.Envelope) error {
+	result, err := s.sendEnvelopeAwaitResult(env, 5*time.Second)
+	if err != nil {
+		return err
+	}
+	if result.err == nil {
+		return nil
+	}
+	if result.err.Code != "target_offline" {
+		return fmt.Errorf("relay error: %s %s", result.err.Code, trimRefSuffix(result.err.Message))
+	}
+	return s.sendOfflinePush(env.ToDeviceId, env)
+}
+
+func (s *Service) sendEnvelopeAwaitResult(env *pocketbridgev1.Envelope, timeout time.Duration) (requestResult, error) {
+	waitCh, err := s.registerRequestWaiter(env.Id)
+	if err != nil {
+		return requestResult{}, err
+	}
+	defer s.unregisterRequestWaiter(env.Id, waitCh)
+
+	if err := s.sendEnvelope(env); err != nil {
+		return requestResult{}, err
+	}
+
+	select {
+	case result := <-waitCh:
+		return result, nil
+	case <-time.After(timeout):
+		return requestResult{}, fmt.Errorf("timed out waiting for relay response")
+	}
+}
+
+func (s *Service) sendOfflinePush(targetDeviceID string, env *pocketbridgev1.Envelope) error {
+	if s.push == nil || s.pushes == nil {
+		return fmt.Errorf("target offline and local FCM sender is not configured")
+	}
+	target, ok := s.pushes.Lookup(targetDeviceID)
+	if !ok {
+		return fmt.Errorf("target offline and no cached push token for %s", targetDeviceID)
+	}
+	msg, ok := push.MessageFromEnvelope(env)
+	if !ok {
+		return fmt.Errorf("target offline and payload does not support FCM fallback")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.push.Send(ctx, target, msg); err != nil {
+		return err
+	}
+	log.Printf("agent delivered offline push: target=%s provider=%s kind=%s", targetDeviceID, target.Provider, msg.Kind)
+	return nil
+}
+
 func (s *Service) sendAgentError(target, code, message string) error {
 	return s.sendEnvelope(&pocketbridgev1.Envelope{
 		Id:           nextID(),
@@ -561,6 +655,7 @@ func (s *Service) clearConn(conn *websocket.Conn) {
 		s.conn = nil
 		s.connected = false
 	}
+	s.failAllPendingRequests("relay disconnected")
 }
 
 func (s *Service) setState(connected bool, lastErr string) {
@@ -568,6 +663,9 @@ func (s *Service) setState(connected bool, lastErr string) {
 	defer s.connMu.Unlock()
 	s.connected = connected
 	s.lastError = lastErr
+	if !connected {
+		s.failAllPendingRequests(lastErr)
+	}
 }
 
 func (s *Service) runNotifyCommand(title, body string) error {
@@ -672,6 +770,73 @@ func expandPath(path string) string {
 
 func nextID() string {
 	return time.Now().UTC().Format("20060102T150405.000000000")
+}
+
+func (s *Service) registerRequestWaiter(id string) (chan requestResult, error) {
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
+	if _, exists := s.pendingRequestMap[id]; exists {
+		return nil, fmt.Errorf("request already pending for %s", id)
+	}
+	ch := make(chan requestResult, 1)
+	s.pendingRequestMap[id] = ch
+	return ch, nil
+}
+
+func (s *Service) unregisterRequestWaiter(id string, ch chan requestResult) {
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
+	if current, exists := s.pendingRequestMap[id]; exists && current == ch {
+		delete(s.pendingRequestMap, id)
+	}
+}
+
+func (s *Service) resolveRequest(id string, result requestResult) bool {
+	s.requestMu.Lock()
+	ch, exists := s.pendingRequestMap[id]
+	if exists {
+		delete(s.pendingRequestMap, id)
+	}
+	s.requestMu.Unlock()
+	if !exists {
+		return false
+	}
+	ch <- result
+	close(ch)
+	return true
+}
+
+func (s *Service) failAllPendingRequests(message string) {
+	s.requestMu.Lock()
+	defer s.requestMu.Unlock()
+	for id, ch := range s.pendingRequestMap {
+		ch <- requestResult{
+			err: &pocketbridgev1.Error{
+				Code:    "relay_disconnected",
+				Message: message,
+			},
+			refID: id,
+		}
+		close(ch)
+		delete(s.pendingRequestMap, id)
+	}
+}
+
+func parseRefID(message string) (string, bool) {
+	const prefix = " (ref="
+	start := strings.LastIndex(message, prefix)
+	if start < 0 || !strings.HasSuffix(message, ")") {
+		return "", false
+	}
+	return message[start+len(prefix) : len(message)-1], true
+}
+
+func trimRefSuffix(message string) string {
+	if _, ok := parseRefID(message); !ok {
+		return message
+	}
+	start := strings.LastIndex(message, " (ref=")
+	return message[:start]
 }
 
 func readEnvelope(conn *websocket.Conn) (*pocketbridgev1.Envelope, error) {
