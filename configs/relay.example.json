@@ -1,0 +1,11 @@
+{
+  "listen_addr": "127.0.0.1:18080",
+  "devices": {
+    "laptop": {
+      "token": "change-me-laptop"
+    },
+    "phone": {
+      "token": "change-me-phone"
+    }
+  }
+}

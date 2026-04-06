@@ -41,11 +41,37 @@
 
 ## 当前仓库状态
 
-当前仓库只包含：
+当前仓库已经包含：
 
 - 初版 `roadmap.md`
 - 初版架构说明
 - 初版 CLI 合同
 - 初版 protobuf 草案
+- `relay` / `agentd` / `pb` 的 M1 最小实现
+- 本地双 agent demo 所需示例配置
 
-实现代码还没有开始写。
+当前已经实现的命令：
+
+- `pb status`
+- `pb notify <target> <title> <body>`
+- `pb task <started|blocked|done|failed> <title> <summary>`
+
+## Quickstart
+
+先生成 protobuf 并构建：
+
+```bash
+make proto
+go build ./...
+```
+
+本地 demo：
+
+```bash
+go run ./cmd/relay -config configs/relay.example.json
+go run ./cmd/agentd -config configs/agent.laptop.example.json
+go run ./cmd/agentd -config configs/agent.phone.example.json
+go run ./cmd/pb --socket /tmp/pocket-bridge-laptop.sock status
+go run ./cmd/pb --socket /tmp/pocket-bridge-laptop.sock notify phone "M1 ok" "relay agent cli path is alive"
+go run ./cmd/pb --socket /tmp/pocket-bridge-laptop.sock task done "Codex task" "task status bridge is alive"
+```

@@ -1,0 +1,10 @@
+{
+  "device_id": "phone",
+  "token": "change-me-phone",
+  "relay_url": "ws://127.0.0.1:18080/ws",
+  "unix_socket": "/tmp/pocket-bridge-phone.sock",
+  "targets": {
+    "laptop": "laptop"
+  },
+  "log_incoming": true
+}

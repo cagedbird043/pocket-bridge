@@ -9,18 +9,22 @@ CLI 必须短、稳定、可脚本化。
 ```bash
 pb status
 pb notify phone "标题" "内容"
-pb notify laptop "标题" "内容"
-pb clip push phone
-pb clip pull phone
-pb clip push laptop
-pb clip pull laptop
-pb file send phone ./path/to/file
-pb file send laptop ./path/to/file
 pb task started "标题" "摘要"
 pb task blocked "标题" "摘要"
 pb task done "标题" "摘要"
 pb task failed "标题" "摘要"
 ```
+
+当前已实现：
+
+- `pb status`
+- `pb notify <target> <title> <body>`
+- `pb task <started|blocked|done|failed> <title> <summary>`
+
+尚未实现：
+
+- `clip *`
+- `file send *`
 
 ## 行为约束
 

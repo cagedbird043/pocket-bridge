@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package pocketbridge.v1;
 
-option go_package = "github.com/cagedbird043/pocket-bridge/proto/pocketbridge/v1;pocketbridgev1";
+option go_package = "github.com/cagedbird043/pocket-bridge/gen/go/pocketbridge/v1;pocketbridgev1";
 
 message Envelope {
   string id = 1;
