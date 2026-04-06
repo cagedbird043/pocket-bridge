@@ -49,12 +49,22 @@
 - 初版 protobuf 草案
 - `relay` / `agentd` / `pb` 的 M1 最小实现
 - 本地双 agent demo 所需示例配置
+- Android 原生 Kotlin demo 工程
+- `MainActivity + BridgeService` 的前台连接形态
+- AVD 上验证过的双向通知闭环
 
 当前已经实现的命令：
 
 - `pb status`
 - `pb notify <target> <title> <body>`
 - `pb task <started|blocked|done|failed> <title> <summary>`
+
+当前实现边界：
+
+- relay / agent / Android 都已使用同一份 protobuf `Envelope`
+- Android 端当前通过前台服务常驻 WebSocket 收消息
+- 当前认证仍然是 `device_id + static token`
+- 设备密钥 / challenge-response 仍是后续里程碑，不在这一版里
 
 ## Quickstart
 
@@ -75,3 +85,32 @@ go run ./cmd/pb --socket /tmp/pocket-bridge-laptop.sock status
 go run ./cmd/pb --socket /tmp/pocket-bridge-laptop.sock notify phone "M1 ok" "relay agent cli path is alive"
 go run ./cmd/pb --socket /tmp/pocket-bridge-laptop.sock task done "Codex task" "task status bridge is alive"
 ```
+
+Android AVD demo：
+
+```bash
+go run ./cmd/relay -config configs/relay.example.json
+go run ./cmd/agentd -config configs/agent.laptop.example.json
+
+cd android
+./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n top.miceworld.pocketbridge/.MainActivity
+```
+
+当前 Android demo 的默认值：
+
+- relay URL: `ws://10.0.2.2:18080/ws`
+- device id: `phone`
+- token: `change-me-phone`
+- notify target: `laptop`
+
+已验证的 live path：
+
+- laptop CLI -> relay -> Android App -> Android 系统通知
+- Android App -> relay -> laptop agent -> `notify-send`
+
+开发注意：
+
+- 当前 debug App 为了 AVD 直连宿主机 relay，显式允许了明文 `ws://10.0.2.2`
+- 这只是本地开发路径；公网部署应切到 `wss://` + TLS

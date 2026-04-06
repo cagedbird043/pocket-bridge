@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">Pocket Bridge</string>
+    <string name="status_disconnected">状态：未连接</string>
+    <string name="hint_relay_url">Relay URL，例如 ws://10.0.2.2:18080/ws</string>
+    <string name="hint_device_id">Device ID，例如 phone</string>
+    <string name="hint_token">Token</string>
+    <string name="hint_notify_target">通知目标，例如 laptop</string>
+    <string name="hint_notify_title">通知标题</string>
+    <string name="hint_notify_body">通知正文</string>
+    <string name="action_start">启动连接</string>
+    <string name="action_stop">停止连接</string>
+    <string name="action_send_notify">发送通知</string>
+    <string name="log_header">运行日志</string>
+    <string name="service_channel_name">Pocket Bridge Service</string>
+    <string name="service_channel_description">保持与 relay 的实时连接</string>
+    <string name="message_channel_name">Pocket Bridge Messages</string>
+    <string name="message_channel_description">来自笔记本或 Codex 的通知</string>
+    <string name="service_notification_title">Pocket Bridge 已运行</string>
+    <string name="service_notification_text_disconnected">正在等待连接</string>
+    <string name="service_notification_text_connected">已连接 relay</string>
+</resources>

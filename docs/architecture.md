@@ -8,6 +8,15 @@
 Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 ```
 
+## 当前实现状态
+
+- `relay`、`agentd`、`pb` 已完成最小可用链路
+- Android 端当前是原生 Kotlin App，形态为 `MainActivity + 前台 BridgeService`
+- Android 在线时通过 WebSocket 直接收 `notify.push` 和 `task status`
+- 2026-04-06 已在 Android 15 AVD 上验证双向通知闭环
+- 当前认证仍是 `device_id + static token`
+- 当前 debug App 允许明文 `ws://10.0.2.2`，只用于 AVD 连接宿主机 relay 的开发路径
+
 ## 组件边界
 
 ### relay
@@ -76,10 +85,16 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 - 目标不是多媒体控制或设备生态整合
 - 目标是服务手机遥控笔记本和 Codex 推送的个人工作流
 
-## 安全模型
+## 目标安全模型
 
 - 每台设备一把独立设备密钥
 - relay 只保存公钥和设备 ACL
 - 只允许白名单消息类型
 - 高风险动作不能是“任意 shell”
 - 文件缓存必须有 TTL
+
+## 当前与目标的差距
+
+- 设备密钥认证尚未落地，当前仍是静态 token
+- Android 端目前只覆盖通知链路，剪贴板和小文件仍未实现
+- 明文 `ws` 只应存在于本地开发；公网环境必须收敛到 TLS

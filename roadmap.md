@@ -14,6 +14,13 @@
 - 不做大文件同步盘
 - 不做通用多用户平台
 
+## 当前状态
+
+- `M0` 已完成：协议、CLI 合同、架构边界已冻结到文档和 proto
+- `M1` 已完成：`relay + agentd + pb` 最小链路已实现并提交
+- `M2` 已跑通 Android demo：2026-04-06 在 Android 15 AVD 上完成双向通知闭环
+- 当前认证仍是静态 token，设备密钥认证还没开始做
+
 ## 里程碑
 
 ### M0: 合同冻结
@@ -51,6 +58,13 @@
 - 笔记本收到通知后能调用 `notify-send`
 - 通知语义保持 push-only，不设计 pull
 - 安卓端实现必须是原生 Kotlin，不依赖 shell 或 Termux
+
+当前进展：
+
+- 已在 Android 15 AVD 上验证 `MainActivity + 前台 BridgeService + WebSocket` 路径
+- 已验证 `pb notify phone ...` 可在 Android 端展示系统通知
+- 已验证 Android 端手动发送通知可投递到 laptop agent
+- 当前 Android demo 为了走 AVD `10.0.2.2` 开发链路，允许明文 `ws`
 
 完成标准：
 
