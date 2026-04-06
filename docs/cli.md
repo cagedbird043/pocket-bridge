@@ -8,6 +8,7 @@ CLI 必须短、稳定、可脚本化。
 
 ```bash
 pb keygen
+pb completion zsh
 pb status
 pb notify phone "标题" "内容"
 pb clip push phone
@@ -22,6 +23,7 @@ pb task failed "标题" "摘要"
 当前已实现：
 
 - `pb keygen`
+- `pb completion zsh`
 - `pb status`
 - `pb notify <target> <title> <body>`
 - `pb clip push <target> [text]`

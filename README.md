@@ -73,6 +73,52 @@
 - relay 侧只保存 `public_key_base64`
 - agent / Android 侧只保存 `private_key_base64`
 
+## 标准安装
+
+这套仓库现在不需要再靠 `go run` 才能使用。
+
+先构建固定名字的二进制：
+
+```bash
+make build
+```
+
+安装到系统路径：
+
+```bash
+sudo make install install-completion install-systemd
+```
+
+安装后会得到：
+
+- `/usr/local/bin/pb`
+- `/usr/local/bin/pocket-bridge-relay`
+- `/usr/local/bin/pocket-bridge-agentd`
+- `/usr/local/share/zsh/site-functions/_pb`
+- `/etc/systemd/system/pocket-bridge-relay@.service`
+- `/etc/systemd/system/pocket-bridge-agentd@.service`
+
+`pocket-bridge-agentd@.service` 是系统级 unit，但进程实际以指定用户身份运行，例如 `pocket-bridge-agentd@alice.service`。
+这样可以保证服务由 PID 1 管理、可开机自启，同时仍然使用该用户的家目录、Wayland 和通知环境。
+
+## 部署约定
+
+推荐的实际配置文件路径：
+
+- relay: `/etc/pocket-bridge/relay-alice.json`
+- relay service: `pocket-bridge-relay@alice.service`
+- agent: `/etc/pocket-bridge/agentd-alice.json`
+- agent env: `/etc/pocket-bridge/agentd-alice.env`
+- agent service: `pocket-bridge-agentd@alice.service`
+
+推荐的公网 relay 入口：
+
+- `ws://your-relay-host:18080/ws`
+
+当前默认仍是明文 `ws://`，因为这样最容易在 Android 真机上直接跑通。
+它已经有设备级 `Ed25519 challenge-response` 认证，但不提供传输层机密性。
+如果后续要承载敏感剪贴板内容，应该进一步切到 `wss://`。
+
 ## Quickstart
 
 先生成 protobuf 并构建：
@@ -126,6 +172,22 @@ adb shell am start -n top.miceworld.pocketbridge/.MainActivity
 - device id: `phone`
 - private key: 使用与 `configs/relay.example.json` 匹配的开发私钥
 - notify target: `laptop`
+
+真机调试安装可以直接走：
+
+```bash
+cd android
+./gradlew :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+../scripts/provision-android-debug.sh \
+  --relay-url ws://your-relay-host:18080/ws \
+  --private-key-base64 '<phone private key>' \
+  --device-id phone \
+  --notify-target laptop \
+  --start
+```
+
+这个脚本依赖 debug build 的 `run-as`，会直接写入 `shared_prefs`，避免手工在手机上敲 relay URL 和私钥。
 
 已验证的 live path：
 

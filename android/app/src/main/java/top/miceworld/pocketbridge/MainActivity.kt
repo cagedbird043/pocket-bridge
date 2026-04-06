@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
         binding.relayUrlInput.setText(config.relayUrl)
         binding.deviceIdInput.setText(config.deviceId)
         binding.privateKeyInput.setText(config.privateKeyBase64)
-        binding.notifyTargetInput.setText("laptop")
+        binding.notifyTargetInput.setText(config.notifyTarget)
     }
 
     private fun bindActions() {
@@ -118,6 +118,7 @@ class MainActivity : ComponentActivity() {
                 relayUrl = binding.relayUrlInput.text.toString().trim(),
                 deviceId = binding.deviceIdInput.text.toString().trim(),
                 privateKeyBase64 = binding.privateKeyInput.text.toString().trim(),
+                notifyTarget = binding.notifyTargetInput.text.toString().trim(),
             ),
         )
     }

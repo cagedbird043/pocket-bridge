@@ -47,6 +47,8 @@ func main() {
 	switch cmd {
 	case "keygen":
 		handleKeygen()
+	case "completion":
+		handleCompletion(args)
 	case "status":
 		handleStatus(client)
 	case "notify":
@@ -77,6 +79,13 @@ func main() {
 	default:
 		usage()
 	}
+}
+
+func handleCompletion(args []string) {
+	if len(args) != 1 || args[0] != "zsh" {
+		usage()
+	}
+	fmt.Print(zshCompletionScript())
 }
 
 func handleKeygen() {
@@ -205,6 +214,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "用法:")
 	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] status")
 	fmt.Fprintln(os.Stderr, "  pb keygen")
+	fmt.Fprintln(os.Stderr, "  pb completion zsh")
 	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] notify <target> <title> <body>")
 	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] clip push <target> [text]")
 	fmt.Fprintln(os.Stderr, "  pb [--socket PATH] clip pull <target>")
@@ -215,4 +225,121 @@ func usage() {
 func exitErr(err error) {
 	fmt.Fprintln(os.Stderr, "错误:", err)
 	os.Exit(1)
+}
+
+func zshCompletionScript() string {
+	return `#compdef pb
+
+_pb() {
+  local -a commands kinds clip_actions shells
+  local cmd=""
+  local cmd_index=0
+  local arg_index=0
+  local i
+
+  commands=(
+    'keygen:generate a device key pair'
+    'status:show agent status'
+    'notify:send a notification to a target device'
+    'clip:push or pull clipboard text'
+    'task:send a task status event'
+    'completion:print shell completion script'
+  )
+  kinds=(
+    'started:task started'
+    'blocked:task blocked'
+    'done:task completed'
+    'failed:task failed'
+  )
+  clip_actions=(
+    'push:send clipboard text'
+    'pull:pull clipboard text'
+  )
+  shells=(
+    'zsh:zsh completion'
+  )
+
+  _arguments -C \
+    '--socket[agent unix socket path]:socket path:_files' \
+    '1:command:->command' \
+    '*::arg:->args'
+
+  case $state in
+    command)
+      _describe -t commands 'pb command' commands
+      return
+      ;;
+    args)
+      for (( i = 2; i < CURRENT; i++ )); do
+        case "${words[i]}" in
+          --socket)
+            (( i++ ))
+            ;;
+          -*)
+            ;;
+          *)
+            cmd="${words[i]}"
+            cmd_index=$i
+            break
+            ;;
+        esac
+      done
+      (( arg_index = CURRENT - cmd_index ))
+
+      case "$cmd" in
+        keygen|status)
+          return
+          ;;
+        notify)
+          case $arg_index in
+            1) _message 'target device' ;;
+            2) _message 'notification title' ;;
+            *) _message 'notification body' ;;
+          esac
+          return
+          ;;
+        clip)
+          if (( arg_index == 1 )); then
+            _describe -t clip_actions 'clipboard action' clip_actions
+            return
+          fi
+          case "${words[cmd_index + 1]}" in
+            push)
+              case $arg_index in
+                2) _message 'target device' ;;
+                *) _message 'clipboard text' ;;
+              esac
+              ;;
+            pull)
+              if (( arg_index == 2 )); then
+                _message 'target device'
+              fi
+              ;;
+          esac
+          return
+          ;;
+        task)
+          if (( arg_index == 1 )); then
+            _describe -t task_kinds 'task status' kinds
+            return
+          fi
+          case $arg_index in
+            2) _message 'task title' ;;
+            *) _message 'task summary' ;;
+          esac
+          return
+          ;;
+        completion)
+          if (( arg_index == 1 )); then
+            _describe -t shells 'shell' shells
+          fi
+          return
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_pb "$@"
+`
 }

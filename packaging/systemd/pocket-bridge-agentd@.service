@@ -1,0 +1,20 @@
+[Unit]
+Description=Pocket Bridge agent for %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+Environment=HOME=/home/%i
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/pocket-bridge/agentd-%i.env
+ExecStart=/usr/local/bin/pocket-bridge-agentd -config /etc/pocket-bridge/agentd-%i.json
+Restart=always
+RestartSec=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
