@@ -11,8 +11,7 @@ message Envelope {
   int64 unix_ms = 4;
   oneof payload {
     DeviceHello device_hello = 10;
-    NotifyRequest notify_request = 11;
-    NotifyEvent notify_event = 12;
+    NotifyPush notify_push = 11;
     ClipboardPush clipboard_push = 13;
     ClipboardPull clipboard_pull = 14;
     ClipboardValue clipboard_value = 15;
@@ -31,16 +30,11 @@ message DeviceHello {
   string protocol_version = 3;
 }
 
-message NotifyRequest {
+message NotifyPush {
   string title = 1;
   string body = 2;
   string topic = 3;
-}
-
-message NotifyEvent {
-  string title = 1;
-  string body = 2;
-  string topic = 3;
+  string priority = 4;
 }
 
 message ClipboardPush {

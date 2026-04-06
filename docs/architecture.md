@@ -16,7 +16,7 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 
 - 设备认证
 - WebSocket 会话保持
-- 消息路由
+- push 消息路由
 - 短时文件缓存
 - 设备在线状态维护
 
@@ -49,10 +49,17 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 职责：
 
 - 登录和设备持钥
-- 前台接收实时消息
+- 以前台 WebSocket 接收实时 push 消息
 - 按需读取或写入系统剪贴板
 - 展示通知
 - 小文件上传下载
+
+强约束：
+
+- 必须是原生 Kotlin App
+- 不依赖 shell
+- 不依赖 Termux
+- 不把通知设计成 pull 模式
 
 ## 设计约束
 
@@ -60,6 +67,7 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 - 不依赖局域网发现
 - 不假设手机能被反向连接
 - 不把“后台稳定剪贴板监听”作为第一阶段目标
+- 通知默认追求尽快送达，在线时必须优先走实时 push
 
 ## 为什么不用 KDE Connect 路线
 

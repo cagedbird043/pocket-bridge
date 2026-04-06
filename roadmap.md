@@ -10,6 +10,7 @@
 - 不做局域网广播发现
 - 不做任意远程 shell
 - 不做系统通知镜像
+- 不做通知 pull
 - 不做大文件同步盘
 - 不做通用多用户平台
 
@@ -45,15 +46,18 @@
 
 ### M2: 通知闭环
 
-- 手机前台能接收来自笔记本的通知消息
+- 手机前台能即时接收来自笔记本的通知消息
 - 手机能向笔记本发送通知
 - 笔记本收到通知后能调用 `notify-send`
+- 通知语义保持 push-only，不设计 pull
+- 安卓端实现必须是原生 Kotlin，不依赖 shell 或 Termux
 
 完成标准：
 
 - 笔记本 -> 手机
 - 手机 -> 笔记本
 - 两端消息均带标题、正文、来源、时间戳
+- 在线设备走 WebSocket 立即推送
 
 ### M3: 剪贴板闭环
 
@@ -99,14 +103,15 @@
 
 - Relay: Go
 - Laptop agent: Go
-- CLI: Go 或 shell wrapper
+- CLI: Go
+- Android: Kotlin
 - Wire protocol: protobuf
 - Real-time transport: WebSocket
-- Android push: 第一阶段前台 WebSocket，后续视需要加 FCM
+- Android notification path: 在线时 WebSocket，离线后台视需要加 FCM
 
 ## 当前优先级
 
 1. 先把协议和 CLI 合同写稳
 2. 先做通知，不先做文件
-3. 先做前台交互，不先做安卓后台保活
+3. 安卓坚持原生实现，不走 shell/Termux 捷径
 4. 先做显式 Codex 通知入口，不先做复杂自动触发
