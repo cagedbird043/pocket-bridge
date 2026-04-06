@@ -8,6 +8,8 @@ out/
 .env
 .cache/
 .tmp/
+configs/*.local.json
+android/app/google-services.json
 
 # Editor / OS noise
 .DS_Store
