@@ -5,9 +5,11 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.IBinder
 import android.util.Base64
 import android.util.Log
+import androidx.core.app.ServiceCompat
 import com.google.protobuf.ByteString
 import com.google.protobuf.InvalidProtocolBufferException
 import kotlinx.coroutines.CoroutineScope
@@ -44,6 +46,7 @@ import top.miceworld.pocketbridge.PushBridge
 import java.util.concurrent.TimeUnit
 
 class BridgeService : Service() {
+    private val tag = "PocketBridge"
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val httpClient = OkHttpClient.Builder()
         .pingInterval(20, TimeUnit.SECONDS)
@@ -94,6 +97,12 @@ class BridgeService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        BridgeRuntime.appendLog("前台服务超时，准备停止 (type=$fgsType)")
+        Log.w(tag, "foreground service timeout, stop self: type=$fgsType startId=$startId")
+        stopBridge()
+    }
+
     private fun startBridge() {
         val config = BridgePrefs.load(this)
         currentConfig = config
@@ -104,10 +113,10 @@ class BridgeService : Service() {
         }
         running = true
         authenticated = false
-        startForeground(
-            NotificationHelper.SERVICE_NOTIFICATION_ID,
-            NotificationHelper.buildServiceNotification(this, connected = false),
-        )
+        val started = tryStartForeground(config)
+        if (!started) {
+            return
+        }
         BridgeRuntime.updateConnection(
             connected = false,
             deviceId = config.deviceId,
@@ -142,6 +151,35 @@ class BridgeService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         if (stopService) {
             stopSelf()
+        }
+    }
+
+    private fun tryStartForeground(config: BridgeConfig): Boolean {
+        return try {
+            ServiceCompat.startForeground(
+                this,
+                NotificationHelper.SERVICE_NOTIFICATION_ID,
+                NotificationHelper.buildServiceNotification(this, connected = false),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING,
+            )
+            true
+        } catch (e: Exception) {
+            running = false
+            authenticated = false
+            loopJob?.cancel()
+            loopJob = null
+            socket?.cancel()
+            socket = null
+            BridgeRuntime.appendLog("启动前台服务失败: ${e.message ?: e.javaClass.simpleName}")
+            BridgeRuntime.updateConnection(
+                connected = false,
+                deviceId = config.deviceId,
+                relayUrl = config.relayUrl,
+                lastError = e.message ?: e.javaClass.simpleName,
+            )
+            Log.e(tag, "failed to promote BridgeService to foreground", e)
+            stopSelf()
+            false
         }
     }
 
@@ -461,7 +499,7 @@ class BridgeService : Service() {
             authenticated = false
             lastError = t.message ?: t.javaClass.simpleName
             BridgeRuntime.appendLog("连接失败: ${lastError}")
-            Log.e("PocketBridge", "websocket failure", t)
+            Log.e(tag, "websocket failure", t)
             closed.complete(Unit)
         }
 

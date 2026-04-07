@@ -68,8 +68,12 @@ object PushBridge {
                 append(title)
             },
         )
-        NotificationHelper.ensureChannels(context)
-        NotificationHelper.showIncomingNotification(context, title, body)
+        runCatching {
+            NotificationHelper.ensureChannels(context)
+            NotificationHelper.showIncomingNotification(context, title, body)
+        }.onFailure { error ->
+            BridgeRuntime.appendLog("展示 FCM 通知失败: ${error.message ?: error.javaClass.simpleName}")
+        }
     }
 
     private fun isFirebaseConfigured(context: Context): Boolean {

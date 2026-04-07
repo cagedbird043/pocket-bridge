@@ -16,7 +16,7 @@ object NotificationHelper {
     const val SERVICE_NOTIFICATION_ID = 1001
 
     fun ensureChannels(context: Context) {
-        val manager = context.getSystemService(NotificationManager::class.java)
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val serviceChannel = NotificationChannel(
                 SERVICE_CHANNEL_ID,
@@ -60,7 +60,10 @@ object NotificationHelper {
             return
         }
 
-        val manager = context.getSystemService(NotificationManager::class.java)
+        val manager = context.getSystemService(NotificationManager::class.java) ?: run {
+            BridgeRuntime.appendLog("通知服务不可用，跳过系统通知：$title")
+            return
+        }
         val notification = NotificationCompat.Builder(context, MESSAGE_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_more)
             .setContentTitle(title)
@@ -68,6 +71,10 @@ object NotificationHelper {
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
             .build()
-        manager.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notification)
+        runCatching {
+            manager.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notification)
+        }.onFailure { error ->
+            BridgeRuntime.appendLog("系统通知投递失败: ${error.message ?: error.javaClass.simpleName}")
+        }
     }
 }
