@@ -12,7 +12,8 @@ import androidx.core.content.ContextCompat
 
 object NotificationHelper {
     const val SERVICE_CHANNEL_ID = "pocket_bridge_service"
-    const val MESSAGE_CHANNEL_ID = "pocket_bridge_messages"
+    const val LEGACY_MESSAGE_CHANNEL_ID = "pocket_bridge_messages"
+    const val MESSAGE_CHANNEL_ID = "pocket_bridge_messages_v2"
     const val SERVICE_NOTIFICATION_ID = 1001
 
     fun ensureChannels(context: Context) {
@@ -28,9 +29,11 @@ object NotificationHelper {
             val messageChannel = NotificationChannel(
                 MESSAGE_CHANNEL_ID,
                 context.getString(R.string.message_channel_name),
-                NotificationManager.IMPORTANCE_DEFAULT,
+                NotificationManager.IMPORTANCE_HIGH,
             ).apply {
                 description = context.getString(R.string.message_channel_description)
+                enableVibration(true)
+                setShowBadge(true)
             }
             manager.createNotificationChannel(serviceChannel)
             manager.createNotificationChannel(messageChannel)
@@ -69,6 +72,8 @@ object NotificationHelper {
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .build()
         runCatching {
