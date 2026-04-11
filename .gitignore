@@ -13,3 +13,4 @@ android/app/google-services.json
 
 # Editor / OS noise
 .DS_Store
+.omx/
