@@ -22,6 +22,14 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".NotificationCopyActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.PocketBridge.Transparent" />
+
         <service
             android:name=".bridge.BridgeService"
             android:enabled="true"
