@@ -49,7 +49,7 @@
     <string name="diagnostic_last_log">最近日志：%1$s</string>
     <string name="diagnostic_stable">如需改 relay、重启服务或看详细日志，请切到设置标签页。</string>
 
-    <string name="hint_relay_url">Relay URL，例如 ws://10.0.2.2:18080/ws</string>
+    <string name="hint_relay_url">Relay URL，例如 ws://223.109.140.254:18080/ws</string>
     <string name="hint_device_id">Device ID，例如 phone</string>
     <string name="hint_private_key_base64">Private Key Base64 (PKCS8 DER)</string>
     <string name="hint_notify_target">通知目标，例如 laptop</string>

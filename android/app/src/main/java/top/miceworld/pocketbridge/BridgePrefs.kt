@@ -22,7 +22,7 @@ object BridgePrefs {
     fun load(context: Context): BridgeConfig {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         return BridgeConfig(
-            relayUrl = prefs.getString(KEY_RELAY_URL, "ws://10.0.2.2:18080/ws") ?: "ws://10.0.2.2:18080/ws",
+            relayUrl = prefs.getString(KEY_RELAY_URL, "ws://223.109.140.254:18080/ws") ?: "ws://223.109.140.254:18080/ws",
             deviceId = prefs.getString(KEY_DEVICE_ID, "phone") ?: "phone",
             privateKeyBase64 = prefs.getString(KEY_PRIVATE_KEY_BASE64, DEFAULT_PHONE_PRIVATE_KEY_BASE64)
                 ?: DEFAULT_PHONE_PRIVATE_KEY_BASE64,

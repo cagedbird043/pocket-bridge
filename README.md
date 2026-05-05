@@ -217,7 +217,7 @@ adb shell am start -n top.miceworld.pocketbridge/.MainActivity
 
 当前 Android demo 的默认值：
 
-- relay URL: `ws://10.0.2.2:18080/ws`
+- relay URL: `ws://223.109.140.254:18080/ws`
 - device id: `phone`
 - private key: 使用与 `configs/relay.example.json` 匹配的开发私钥
 - notify target: `laptop`
