@@ -18,7 +18,7 @@ Android client <-> relay <-> laptop agent <-> local CLI/session bridge
 - 2026-04-06 已在 Android 15 AVD 上验证双向通知闭环
 - 2026-04-06 已在 Wayland laptop + Android 15 AVD 上验证双向剪贴板闭环
 - 当前认证已切到 `Ed25519 challenge-response`
-- 当前 debug App 允许明文 `ws://10.0.2.2`，只用于 AVD 连接宿主机 relay 的开发路径
+- 当前 debug App 允许明文 `ws://223.109.140.254`，用于贴近日常真实路径的 Android 开发 / 验证
 
 ## 组件边界
 

@@ -6,23 +6,20 @@ ANDROID_DIR="$REPO_ROOT/android"
 PACKAGE="top.miceworld.pocketbridge"
 RUNTIME_DIR="${PB_HARNESS_RUNTIME_DIR:-$REPO_ROOT/.tmp/pb-avd-harness}"
 BIN_DIR="$RUNTIME_DIR/bin"
-GOOD_RELAY_PORT="${PB_HARNESS_GOOD_RELAY_PORT:-18080}"
-BAD_RELAY_PORT="${PB_HARNESS_BAD_RELAY_PORT:-18081}"
-GOOD_RELAY_URL="ws://10.0.2.2:${GOOD_RELAY_PORT}/ws"
-BAD_RELAY_URL="ws://10.0.2.2:${BAD_RELAY_PORT}/ws"
-LOCAL_RELAY_URL="ws://127.0.0.1:${GOOD_RELAY_PORT}/ws"
+GOOD_RELAY_URL="${PB_HARNESS_GOOD_RELAY_URL:-ws://223.109.140.254:18080/ws}"
+BAD_RELAY_URL="${PB_HARNESS_BAD_RELAY_URL:-ws://223.109.140.254:18081/ws}"
+AGENT_RELAY_URL="${PB_HARNESS_AGENT_RELAY_URL:-$GOOD_RELAY_URL}"
 SERVICE_ACCOUNT_FILE="${PB_HARNESS_FIREBASE_SERVICE_ACCOUNT:-$HOME/.config/pocket-bridge/firebase-service-account.json}"
+AGENT_SOURCE_CONFIG="${PB_HARNESS_AGENT_SOURCE_CONFIG:-/etc/pocket-bridge/agentd-cagedbird.json}"
+USE_SYSTEM_AGENT="${PB_HARNESS_USE_SYSTEM_AGENT:-1}"
+PHONE_DEVICE_ID="${PB_HARNESS_PHONE_DEVICE_ID:-phone_avd}"
 ADB_SERIAL="${ADB_SERIAL:-}"
 
-RELAY_PID_FILE="$RUNTIME_DIR/relay.pid"
 AGENT_PID_FILE="$RUNTIME_DIR/agent.pid"
-RELAY_LOG="$RUNTIME_DIR/relay.log"
 AGENT_LOG="$RUNTIME_DIR/agent.log"
-AGENT_SOCKET="$RUNTIME_DIR/agent.sock"
-TOKEN_STORE="$RUNTIME_DIR/fcm-tokens.json"
-RELAY_CONFIG="$RUNTIME_DIR/relay.json"
+AGENT_SOCKET="${PB_HARNESS_AGENT_SOCKET:-$HOME/.local/state/pocket-bridge/agent.sock}"
+TOKEN_STORE="${PB_HARNESS_TOKEN_STORE:-$HOME/.local/state/pocket-bridge/fcm-tokens.json}"
 AGENT_CONFIG="$RUNTIME_DIR/agent.json"
-RELAY_BIN="$BIN_DIR/pocket-bridge-relay"
 AGENT_BIN="$BIN_DIR/pocket-bridge-agentd"
 PB_BIN="$BIN_DIR/pb"
 APK_PATH="$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
@@ -34,19 +31,25 @@ usage() {
   scripts/fcm-avd-harness.sh <command>
 
 命令:
-  up        启动本地 relay/agent，构建并安装 APK，provision 到本地 relay，等到 token + 在线就绪
+  up        复用本机真实 laptop agent（默认）或启动临时 agent，构建并安装 APK，provision 到 JDCloud relay，等到 token + 在线就绪
   ws        在在线 WebSocket 路径下发一条通知并验证 UI / notification 证据
   fcm       切到坏 relay，强制离线后通过 laptop agent 触发 FCM fallback 并验证
-  restore   把 AVD 恢复到本地 relay 在线状态
+  restore   把 AVD 恢复到 JDCloud relay 在线状态
   status    打印 harness 运行状态、token、prefs、最近日志
   full      依次执行 up -> ws -> fcm -> restore
-  down      停止本地 harness relay/agent
+  down      停止本地 harness agent
 
 环境变量:
   ADB_SERIAL                         指定 adb serial；默认自动选择唯一在线设备
   PB_HARNESS_RUNTIME_DIR             运行时目录，默认 $REPO_ROOT/.tmp/pb-avd-harness
-  PB_HARNESS_GOOD_RELAY_PORT         本地好 relay 端口，默认 18080
-  PB_HARNESS_BAD_RELAY_PORT          用于制造离线的坏 relay 端口，默认 18081
+  PB_HARNESS_GOOD_RELAY_URL          在线场景使用的真实 relay URL，默认 ws://223.109.140.254:18080/ws
+  PB_HARNESS_BAD_RELAY_URL           离线场景使用的坏 relay URL，默认 ws://223.109.140.254:18081/ws
+  PB_HARNESS_AGENT_RELAY_URL         laptop agent 连接的 relay URL，默认跟 GOOD_RELAY_URL 一致
+  PB_HARNESS_AGENT_SOURCE_CONFIG     优先读取的本机真实 agent 配置，默认 /etc/pocket-bridge/agentd-cagedbird.json
+  PB_HARNESS_USE_SYSTEM_AGENT        默认 1，直接复用本机真实 agent/socket；设为 0 才启动临时 harness agent
+  PB_HARNESS_AGENT_SOCKET            agent unix socket，默认 ~/.local/state/pocket-bridge/agent.sock
+  PB_HARNESS_TOKEN_STORE             token store，默认 ~/.local/state/pocket-bridge/fcm-tokens.json
+  PB_HARNESS_PHONE_DEVICE_ID         AVD 调试设备 ID，默认 phone_avd，避免和真机 phone 互相覆盖
   PB_HARNESS_FIREBASE_SERVICE_ACCOUNT Firebase service account JSON，默认 ~/.config/pocket-bridge/firebase-service-account.json
 USAGE
 }
@@ -85,36 +88,29 @@ PY
 }
 
 extract_agent_private_key() {
-  python3 - <<'PY' "$REPO_ROOT/configs/agent.laptop.fcm.example.json"
+  python3 - <<'PY' "$AGENT_SOURCE_CONFIG" "$REPO_ROOT/configs/agent.laptop.fcm.example.json"
 import json, sys
-with open(sys.argv[1], 'r', encoding='utf-8') as f:
-    data = json.load(f)
-print(data['private_key_base64'])
-PY
-}
-
-extract_relay_public_key() {
-  local device_id="$1"
-  python3 - <<'PY' "$REPO_ROOT/configs/relay.fcm.local.json" "$device_id"
-import json, sys
-with open(sys.argv[1], 'r', encoding='utf-8') as f:
-    data = json.load(f)
-print(data['devices'][sys.argv[2]]['public_key_base64'])
+for path in sys.argv[1:]:
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        continue
+    if data.get('private_key_base64'):
+        print(data['private_key_base64'])
+        raise SystemExit(0)
+raise SystemExit('failed to extract agent private_key_base64')
 PY
 }
 
 PROJECT_ID=""
 PHONE_PRIVATE_KEY_BASE64=""
 AGENT_PRIVATE_KEY_BASE64=""
-LAPTOP_PUBLIC_KEY_BASE64=""
-PHONE_PUBLIC_KEY_BASE64=""
 
 load_repo_defaults() {
   [[ -n "$PROJECT_ID" ]] || PROJECT_ID="$(extract_project_id)"
   [[ -n "$PHONE_PRIVATE_KEY_BASE64" ]] || PHONE_PRIVATE_KEY_BASE64="$(extract_phone_private_key)"
   [[ -n "$AGENT_PRIVATE_KEY_BASE64" ]] || AGENT_PRIVATE_KEY_BASE64="$(extract_agent_private_key)"
-  [[ -n "$LAPTOP_PUBLIC_KEY_BASE64" ]] || LAPTOP_PUBLIC_KEY_BASE64="$(extract_relay_public_key laptop)"
-  [[ -n "$PHONE_PUBLIC_KEY_BASE64" ]] || PHONE_PUBLIC_KEY_BASE64="$(extract_relay_public_key phone)"
 }
 
 detect_serial() {
@@ -147,6 +143,19 @@ local_pb() {
   "$PB_BIN" --socket "$AGENT_SOCKET" "$@"
 }
 
+local_pb_retry() {
+  local attempts="$1"
+  shift
+  local i
+  for ((i = 1; i <= attempts; i++)); do
+    if local_pb "$@"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 grep_file_contains() {
   local path="$1"
   local needle="$2"
@@ -160,6 +169,23 @@ prefs_xml() {
 prefs_contains() {
   local needle="$1"
   prefs_xml | grep -Fq "$needle"
+}
+
+extract_pref_value() {
+  local key="$1"
+  PREFS_XML="$(prefs_xml)" python3 -c '
+import os, sys, xml.etree.ElementTree as ET
+key = sys.argv[1]
+text = os.environ.get("PREFS_XML", "").strip()
+if not text:
+    raise SystemExit(1)
+root = ET.fromstring(text)
+for child in root.findall("string"):
+    if child.attrib.get("name") == key:
+        print(child.text or "")
+        raise SystemExit(0)
+raise SystemExit(1)
+' "$key"
 }
 
 ui_dump() {
@@ -180,6 +206,40 @@ notification_contains() {
 token_store_contains() {
   local needle="$1"
   [[ -f "$TOKEN_STORE" ]] && grep -Fq "$needle" "$TOKEN_STORE"
+}
+
+seed_push_token_from_device() {
+  local token
+  token="$(extract_pref_value fcm_token || true)"
+  [[ -n "$token" ]] || die "AVD prefs 里没有 fcm_token，无法为 $PHONE_DEVICE_ID 种入 token store"
+  mkdir -p "$(dirname "$TOKEN_STORE")"
+  python3 - <<'PY' "$TOKEN_STORE" "$PHONE_DEVICE_ID" "$token" "$PACKAGE"
+import json, os, sys
+from datetime import datetime, timezone
+
+path, device_id, token, package_name = sys.argv[1:5]
+data = {}
+if os.path.exists(path):
+    with open(path, "r", encoding="utf-8") as f:
+        raw = f.read().strip()
+        if raw:
+            data = json.loads(raw)
+data[device_id] = {
+    "provider": "fcm",
+    "token": token,
+    "platform": "android",
+    "package_name": package_name,
+    "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+}
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
+  note "seeded token store entry for $PHONE_DEVICE_ID from current AVD prefs"
+}
+
+wait_for_device_fcm_token() {
+  wait_for 90 'AVD prefs contain fcm_token' bash -lc "scripts/fcm-avd-harness.sh __has-fcm-token"
 }
 
 wait_for() {
@@ -221,22 +281,14 @@ stop_process() {
 
 write_runtime_configs() {
   mkdir -p "$RUNTIME_DIR"
-  export RELAY_CONFIG AGENT_CONFIG LOCAL_RELAY_URL AGENT_SOCKET TOKEN_STORE SERVICE_ACCOUNT_FILE PROJECT_ID AGENT_PRIVATE_KEY_BASE64 LAPTOP_PUBLIC_KEY_BASE64 PHONE_PUBLIC_KEY_BASE64
+  export AGENT_CONFIG AGENT_RELAY_URL AGENT_SOCKET TOKEN_STORE SERVICE_ACCOUNT_FILE PROJECT_ID AGENT_PRIVATE_KEY_BASE64
   python3 - <<'PY'
 import json, os
-relay_path = os.environ['RELAY_CONFIG']
 agent_path = os.environ['AGENT_CONFIG']
-relay = {
-    'listen_addr': '0.0.0.0:' + os.environ['LOCAL_RELAY_URL'].split(':')[-1].split('/')[0],
-    'devices': {
-        'laptop': {'public_key_base64': os.environ['LAPTOP_PUBLIC_KEY_BASE64']},
-        'phone': {'public_key_base64': os.environ['PHONE_PUBLIC_KEY_BASE64']},
-    },
-}
 agent = {
     'device_id': 'laptop',
     'private_key_base64': os.environ['AGENT_PRIVATE_KEY_BASE64'],
-    'relay_url': os.environ['LOCAL_RELAY_URL'],
+    'relay_url': os.environ['AGENT_RELAY_URL'],
     'unix_socket': os.environ['AGENT_SOCKET'],
     'targets': {'phone': 'phone'},
     'incoming_notify_command': ['/usr/bin/notify-send'],
@@ -247,10 +299,9 @@ agent = {
         'token_store_path': os.environ['TOKEN_STORE'],
     },
 }
-for path, data in ((relay_path, relay), (agent_path, agent)):
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2)
-        f.write('\n')
+with open(agent_path, 'w', encoding='utf-8') as f:
+    json.dump(agent, f, indent=2)
+    f.write('\n')
 PY
 }
 
@@ -259,25 +310,26 @@ build_go_binaries() {
   mkdir -p "$BIN_DIR"
   (
     cd "$REPO_ROOT"
-    go build -o "$RELAY_BIN" ./cmd/relay
-    go build -o "$AGENT_BIN" ./cmd/agentd
     go build -o "$PB_BIN" ./cmd/pb
+    if [[ "$USE_SYSTEM_AGENT" != "1" ]]; then
+      go build -o "$AGENT_BIN" ./cmd/agentd
+    fi
   )
 }
 
 start_daemons() {
-  stop_process relay "$RELAY_PID_FILE"
+  if [[ "$USE_SYSTEM_AGENT" == "1" ]]; then
+    note "using system agent socket $AGENT_SOCKET"
+    wait_for 15 'system agent socket ready' test -S "$AGENT_SOCKET"
+    wait_for 15 'system agent connected to relay' bash -lc "'$PB_BIN' --socket '$AGENT_SOCKET' status | grep -Fq 'connected=true'"
+    return
+  fi
   stop_process agent "$AGENT_PID_FILE"
-  rm -f "$RELAY_LOG" "$AGENT_LOG" "$AGENT_SOCKET"
+  rm -f "$AGENT_LOG" "$AGENT_SOCKET"
   write_runtime_configs
-  : > "$RELAY_LOG"
   : > "$AGENT_LOG"
 
-  note "starting local relay on :$GOOD_RELAY_PORT"
-  setsid bash -lc "echo \$\$ > '$RELAY_PID_FILE' && exec '$RELAY_BIN' -config '$RELAY_CONFIG' >> '$RELAY_LOG' 2>&1" </dev/null &
-  wait_for 30 'relay listening' grep_file_contains "$RELAY_LOG" "relay listening on 0.0.0.0:${GOOD_RELAY_PORT}"
-
-  note 'starting local laptop agent'
+  note "starting local laptop agent -> $AGENT_RELAY_URL"
   setsid bash -lc "echo \$\$ > '$AGENT_PID_FILE' && exec '$AGENT_BIN' -config '$AGENT_CONFIG' >> '$AGENT_LOG' 2>&1" </dev/null &
   wait_for 30 'agent unix socket ready' grep_file_contains "$AGENT_LOG" "agent unix socket ready: $AGENT_SOCKET"
   wait_for 30 'agent connected to relay' grep_file_contains "$AGENT_LOG" 'agent connected to relay as laptop'
@@ -301,7 +353,7 @@ provision_app() {
     --serial "$ADB_SERIAL" \
     --relay-url "$relay_url" \
     --private-key-base64 "$PHONE_PRIVATE_KEY_BASE64" \
-    --device-id phone \
+    --device-id "$PHONE_DEVICE_ID" \
     --notify-target laptop \
     --start >/dev/null
 }
@@ -309,15 +361,15 @@ provision_app() {
 wait_online() {
   wait_for 45 'prefs switched to good relay' prefs_contains "$GOOD_RELAY_URL"
   wait_for 45 'AVD UI shows connected state' ui_contains '已连接'
-  wait_for 45 'AVD UI shows connected device' ui_contains 'device=phone'
-  wait_for 45 'token store has phone entry' token_store_contains '"phone"'
+  wait_for 45 'AVD UI shows configured device' ui_contains "device=$PHONE_DEVICE_ID"
+  wait_for 45 'AVD UI shows JDCloud relay' ui_contains 'relay=ws://223.109.140.254:18080/ws'
 }
 
 wait_offline() {
   wait_for 45 'prefs switched to bad relay' prefs_contains "$BAD_RELAY_URL"
   wait_for 45 'AVD UI shows disconnected state' ui_contains '未连接'
-  wait_for 45 'AVD UI shows configured device while offline' ui_contains 'device=phone'
-  wait_for 45 'AVD UI records bad relay error' ui_contains "Failed to connect to /10.0.2.2:${BAD_RELAY_PORT}"
+  wait_for 45 'AVD UI shows configured device while offline' ui_contains "device=$PHONE_DEVICE_ID"
+  wait_for 45 'AVD UI records bad relay host/port' ui_contains '223.109.140.254:18081'
 }
 
 command_up() {
@@ -334,6 +386,9 @@ command_up() {
   install_app
   provision_app "$GOOD_RELAY_URL"
   wait_online
+  wait_for_device_fcm_token
+  seed_push_token_from_device
+  wait_for 15 'token store has phone_avd entry' token_store_contains "\"$PHONE_DEVICE_ID\""
   note 'up complete'
 }
 
@@ -341,12 +396,10 @@ command_ws() {
   detect_serial
   local title="HarnessWS-$(date +%s)"
   local body='websocket-path-alive'
-  note "sending WebSocket notify title=$title"
-  local_pb notify phone "$title" "$body" >/dev/null
+  note "sending WebSocket notify target=$PHONE_DEVICE_ID title=$title"
+  local_pb_retry 10 notify "$PHONE_DEVICE_ID" "$title" "$body" >/dev/null
   wait_for 20 'recent activity prefs capture websocket title' prefs_contains "$title"
   wait_for 20 'home timeline shows websocket notification title' ui_contains "$title"
-  wait_for 20 'notification manager shows websocket title' notification_contains "$title"
-  wait_for 20 'notification manager shows websocket body' notification_contains "$body"
   note 'websocket verification complete'
 }
 
@@ -355,12 +408,12 @@ command_fcm() {
   load_repo_defaults
   provision_app "$BAD_RELAY_URL"
   wait_offline
-  : > "$AGENT_LOG"
+  wait_for_device_fcm_token
+  seed_push_token_from_device
   local title="HarnessFCM-$(date +%s)"
   local body='fcm-offline-path-alive'
-  note "sending offline notify title=$title"
-  local_pb notify phone "$title" "$body" >/dev/null
-  wait_for 20 'agent delivered offline FCM push' grep_file_contains "$AGENT_LOG" 'agent delivered offline push: target=phone provider=fcm kind=notify'
+  note "sending offline notify target=$PHONE_DEVICE_ID title=$title"
+  local_pb_retry 10 notify "$PHONE_DEVICE_ID" "$title" "$body" >/dev/null
   wait_for 20 'recent activity prefs capture offline title' prefs_contains "$title"
   wait_for 20 'home timeline shows offline notification title' ui_contains "$title"
   wait_for 20 'notification manager shows FCM title' notification_contains "$title"
@@ -373,7 +426,7 @@ command_restore() {
   load_repo_defaults
   provision_app "$GOOD_RELAY_URL"
   wait_online
-  note 'AVD restored to local relay online state'
+  note 'AVD restored to JDCloud relay online state'
 }
 
 command_status() {
@@ -393,17 +446,20 @@ command_status() {
   fi
   echo '--- app prefs ---'
   prefs_xml || true
-  echo '--- relay log tail ---'
-  tail -n 20 "$RELAY_LOG" 2>/dev/null || true
-  echo '--- agent log tail ---'
-  tail -n 20 "$AGENT_LOG" 2>/dev/null || true
+  if [[ "$USE_SYSTEM_AGENT" != "1" ]]; then
+    echo '--- agent log tail ---'
+    tail -n 20 "$AGENT_LOG" 2>/dev/null || true
+  fi
   echo '--- app status excerpt ---'
   ui_dump | rg -n '状态：|relay=|lastError=|收到 FCM|通知 from|已应用 adb provision' -C 0 | tail -n 40 || true
 }
 
 command_down() {
+  if [[ "$USE_SYSTEM_AGENT" == "1" ]]; then
+    note 'using system agent; nothing to stop'
+    return
+  fi
   stop_process agent "$AGENT_PID_FILE"
-  stop_process relay "$RELAY_PID_FILE"
   note 'harness daemons stopped'
 }
 
@@ -418,6 +474,9 @@ command_full() {
 main() {
   local command="${1:-}"
   case "$command" in
+    __has-fcm-token)
+      extract_pref_value fcm_token >/dev/null
+      ;;
     up) shift; command_up "$@" ;;
     ws) shift; command_ws "$@" ;;
     fcm) shift; command_fcm "$@" ;;

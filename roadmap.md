@@ -65,7 +65,7 @@
 - 已在 Android 15 AVD 上验证 `MainActivity + 前台 BridgeService + WebSocket` 路径
 - 已验证 `pb notify phone ...` 可在 Android 端展示系统通知
 - 已验证 Android 端手动发送通知可投递到 laptop agent
-- 当前 Android demo 为了走 AVD `10.0.2.2` 开发链路，允许明文 `ws`
+- 当前 Android demo 为了贴近真实场景，默认走 JDCloud relay 的明文 `ws` 开发链路
 
 完成标准：
 

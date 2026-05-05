@@ -232,19 +232,20 @@ scripts/fcm-avd-harness.sh full
 
 它会按这条闭环自动执行：
 
-- 在宿主机起本地 `relay + agentd`
+- 默认复用本机已经在线的真实 `agentd`，并让 Android / agent 都连到 JDCloud relay
 - 构建并安装当前工作树的 debug APK
-- 通过现有 `provision-android-debug.sh` 把 AVD 指向 `ws://10.0.2.2:18080/ws`
+- 通过现有 `provision-android-debug.sh` 把 AVD 指向真实 JDCloud relay `ws://223.109.140.254:18080/ws`
 - 验证在线 WebSocket 通知
 - 再把 AVD 切到一个故意不可达的坏 relay 端口，制造“手机在线但 relay 离线”的场景
 - 让 laptop agent 走 FCM fallback 发通知
-- 最后把 AVD 恢复回本地 relay 在线状态
+- 最后把 AVD 恢复回 JDCloud relay 在线状态
 
 前提：
 
 - AVD 必须是带 Google Play / Play services 的镜像
 - `android/app/google-services.json` 必须存在
 - laptop 上要有可用的 Firebase service account，默认读取 `~/.config/pocket-bridge/firebase-service-account.json`
+- harness 默认把 AVD provision 成独立设备 `phone_avd`，避免覆盖真机 `phone`
 
 常用子命令：
 
@@ -271,7 +272,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
   --start
 ```
 
-这个脚本依赖 debug build 的 `run-as`，会直接写入 `shared_prefs`，避免手工在手机上敲 relay URL 和私钥。
+这个脚本依赖 debug build 的 `run-as`，会直接写入 `shared_prefs`，避免手工在手机上敲 relay URL 和私钥；现在它只更新 relay / device / private key / notify target 四个键，会保留已有 `fcm_token`、通知历史等其他 prefs。
 
 已验证的 live path：
 
@@ -282,7 +283,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 开发注意：
 
-- 当前 debug App 为了 AVD 直连宿主机 relay，显式允许了明文 `ws://10.0.2.2`
+- 当前 debug App 为了直连个人 JDCloud relay，显式允许了明文 `ws://223.109.140.254`
 - 这只是本地开发路径；公网部署应切到 `wss://` + TLS
 - Android 侧剪贴板目前按用户显式动作工作，符合“前台读写、不要后台自动覆盖”的边界
 - FCM 当前只接入 `notify/task` 的离线补发，不承诺剪贴板和文件传输在后台可靠唤醒

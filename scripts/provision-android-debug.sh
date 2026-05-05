@@ -90,23 +90,50 @@ if [[ -n "$SERIAL" ]]; then
 fi
 
 tmp_xml="$(mktemp)"
+existing_xml="$(mktemp)"
 cleanup() {
   rm -f "$tmp_xml"
+  rm -f "$existing_xml"
 }
 trap cleanup EXIT
 
-cat >"$tmp_xml" <<EOF
-<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<map>
-    <string name="relay_url">$(xml_escape "$RELAY_URL")</string>
-    <string name="device_id">$(xml_escape "$DEVICE_ID")</string>
-    <string name="private_key_base64">$(xml_escape "$PRIVATE_KEY_BASE64")</string>
-    <string name="notify_target">$(xml_escape "$NOTIFY_TARGET")</string>
-</map>
-EOF
-
 "${ADB[@]}" wait-for-device
 "${ADB[@]}" shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
+if ! "${ADB[@]}" shell "run-as $PACKAGE cat shared_prefs/pocket_bridge.xml" >"$existing_xml" 2>/dev/null; then
+  cat >"$existing_xml" <<'EOF'
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+</map>
+EOF
+fi
+
+python3 - <<'PY' "$existing_xml" "$tmp_xml" "$RELAY_URL" "$DEVICE_ID" "$PRIVATE_KEY_BASE64" "$NOTIFY_TARGET"
+import sys
+import xml.etree.ElementTree as ET
+
+src, dst, relay_url, device_id, private_key_base64, notify_target = sys.argv[1:]
+tree = ET.parse(src)
+root = tree.getroot()
+if root.tag != "map":
+    raise SystemExit("unexpected prefs root")
+
+values = {
+    "relay_url": relay_url,
+    "device_id": device_id,
+    "private_key_base64": private_key_base64,
+    "notify_target": notify_target,
+}
+
+existing = {child.attrib.get("name"): child for child in root.findall("string")}
+for key, value in values.items():
+    node = existing.get(key)
+    if node is None:
+        node = ET.SubElement(root, "string", {"name": key})
+    node.text = value
+
+tree.write(dst, encoding="utf-8", xml_declaration=True)
+PY
+
 "${ADB[@]}" push "$tmp_xml" /data/local/tmp/pocket_bridge.xml >/dev/null
 "${ADB[@]}" shell "run-as $PACKAGE mkdir -p shared_prefs && run-as $PACKAGE cp /data/local/tmp/pocket_bridge.xml shared_prefs/pocket_bridge.xml && run-as $PACKAGE chmod 600 shared_prefs/pocket_bridge.xml"
 "${ADB[@]}" shell rm -f /data/local/tmp/pocket_bridge.xml >/dev/null 2>&1 || true
