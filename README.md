@@ -222,6 +222,41 @@ adb shell am start -n top.miceworld.pocketbridge/.MainActivity
 - private key: 使用与 `configs/relay.example.json` 匹配的开发私钥
 - notify target: `laptop`
 
+## AVD FCM harness
+
+为了后续 Android / FCM 迭代时能反复做真机级回归，仓库现在提供了一个本地 AVD harness：
+
+```bash
+scripts/fcm-avd-harness.sh full
+```
+
+它会按这条闭环自动执行：
+
+- 在宿主机起本地 `relay + agentd`
+- 构建并安装当前工作树的 debug APK
+- 通过现有 `provision-android-debug.sh` 把 AVD 指向 `ws://10.0.2.2:18080/ws`
+- 验证在线 WebSocket 通知
+- 再把 AVD 切到一个故意不可达的坏 relay 端口，制造“手机在线但 relay 离线”的场景
+- 让 laptop agent 走 FCM fallback 发通知
+- 最后把 AVD 恢复回本地 relay 在线状态
+
+前提：
+
+- AVD 必须是带 Google Play / Play services 的镜像
+- `android/app/google-services.json` 必须存在
+- laptop 上要有可用的 Firebase service account，默认读取 `~/.config/pocket-bridge/firebase-service-account.json`
+
+常用子命令：
+
+- `scripts/fcm-avd-harness.sh up`
+- `scripts/fcm-avd-harness.sh ws`
+- `scripts/fcm-avd-harness.sh fcm`
+- `scripts/fcm-avd-harness.sh restore`
+- `scripts/fcm-avd-harness.sh status`
+- `scripts/fcm-avd-harness.sh down`
+
+这个 harness 只复用现有公开 app path 和 adb provisioning，不会靠 `adb shell` 去强启私有 `BridgeService`。
+
 真机调试安装可以直接走：
 
 ```bash
