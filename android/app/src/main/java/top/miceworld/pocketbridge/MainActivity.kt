@@ -53,6 +53,7 @@ class MainActivity : ComponentActivity() {
         applyProvisionIntent(intent)
         requestNotificationPermissionIfNeeded()
         bindToolbar()
+        bindTargetDropdown()
         bindInitialState()
         bindBottomNavigation(savedInstanceState?.getInt(KEY_SELECTED_TAB) ?: R.id.nav_recent)
         bindActions()
@@ -108,6 +109,12 @@ class MainActivity : ComponentActivity() {
         binding.topToolbar.title = getString(R.string.app_name)
     }
 
+    private fun bindTargetDropdown() {
+        binding.notifyTargetInput.setOnItemClickListener { _, _, _, _ ->
+            saveConfigFromFields()
+        }
+    }
+
     private fun bindBottomNavigation(initialTab: Int) {
         binding.bottomNavigation.setOnItemSelectedListener { item ->
             showTab(item.itemId)
@@ -119,12 +126,21 @@ class MainActivity : ComponentActivity() {
 
     private fun bindInitialState() {
         val config = BridgePrefs.load(this)
-        BridgeRuntime.syncConfig(config)
-        binding.notifyTargetInput.setText(config.notifyTarget)
+        val targetOptions = buildTargetOptions(
+            deviceId = config.deviceId,
+            selectedTarget = config.notifyTarget,
+        )
+        val resolvedTarget = resolveDefaultNotifyTarget(config)
+        if (resolvedTarget != config.notifyTarget) {
+            BridgePrefs.save(this, config.copy(notifyTarget = resolvedTarget))
+        }
+        BridgeRuntime.syncConfig(config.copy(notifyTarget = resolvedTarget))
+        binding.notifyTargetInput.setSimpleItems(targetOptions.toTypedArray())
+        binding.notifyTargetInput.setText(resolvedTarget, false)
         binding.relayUrlInput.setText(config.relayUrl)
         binding.deviceIdInput.setText(config.deviceId)
         binding.privateKeyInput.setText(config.privateKeyBase64)
-        renderActionTarget(config.notifyTarget)
+        renderActionTarget(resolvedTarget)
     }
 
     private fun bindActions() {
@@ -309,6 +325,29 @@ class MainActivity : ComponentActivity() {
     }
 
 
+    private fun buildTargetOptions(deviceId: String, selectedTarget: String): List<String> {
+        val inferredPeer = inferPeerTarget(deviceId)
+        return listOf(
+            selectedTarget.trim(),
+            inferredPeer,
+            "laptop",
+            "phone",
+        ).filter { it.isNotBlank() }
+            .distinct()
+    }
+
+    private fun resolveDefaultNotifyTarget(config: BridgeConfig): String {
+        return config.notifyTarget.trim().ifBlank { inferPeerTarget(config.deviceId) }
+    }
+
+    private fun inferPeerTarget(deviceId: String): String {
+        return if (deviceId.trim().equals("laptop", ignoreCase = true)) {
+            "phone"
+        } else {
+            "laptop"
+        }
+    }
+
     private fun renderActionTarget(target: String) {
         binding.actionsTargetText.text = if (target.isBlank()) {
             getString(R.string.actions_target_summary_missing)
@@ -324,12 +363,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun saveConfigFromFields(): BridgeConfig {
-        val next = BridgeConfig(
+        val draft = BridgeConfig(
             relayUrl = binding.relayUrlInput.text?.toString().orEmpty().trim(),
             deviceId = binding.deviceIdInput.text?.toString().orEmpty().trim(),
             privateKeyBase64 = binding.privateKeyInput.text?.toString().orEmpty().trim(),
             notifyTarget = binding.notifyTargetInput.text?.toString().orEmpty().trim(),
         )
+        val next = draft.copy(notifyTarget = resolveDefaultNotifyTarget(draft))
+        binding.notifyTargetInput.setSimpleItems(
+            buildTargetOptions(deviceId = next.deviceId, selectedTarget = next.notifyTarget).toTypedArray(),
+        )
+        binding.notifyTargetInput.setText(next.notifyTarget, false)
         BridgePrefs.save(this, next)
         BridgeRuntime.syncConfig(next)
         renderActionTarget(next.notifyTarget)
