@@ -52,6 +52,7 @@ object PushBridge {
         val body = data[DATA_BODY] ?: fallbackBody.orEmpty()
         val kind = data[DATA_KIND].orEmpty()
         val fromDeviceId = data[DATA_FROM_DEVICE_ID].orEmpty()
+        val receivedAtMs = System.currentTimeMillis()
 
         BridgeRuntime.appendLog(
             buildString {
@@ -68,6 +69,29 @@ object PushBridge {
                 append(title)
             },
         )
+        when (kind) {
+            RecentActivityEntry.KIND_TASK -> {
+                BridgeRuntime.recordIncomingTask(
+                    context = context,
+                    taskKind = "",
+                    title = title,
+                    summary = body,
+                    fromDeviceId = fromDeviceId,
+                    ingress = RecentActivityEntry.INGRESS_FCM,
+                    timestampMs = receivedAtMs,
+                )
+            }
+            else -> {
+                BridgeRuntime.recordIncomingNotify(
+                    context = context,
+                    title = title,
+                    body = body,
+                    fromDeviceId = fromDeviceId,
+                    ingress = RecentActivityEntry.INGRESS_FCM,
+                    timestampMs = receivedAtMs,
+                )
+            }
+        }
         runCatching {
             NotificationHelper.ensureChannels(context)
             NotificationHelper.showIncomingNotification(context, title, body)

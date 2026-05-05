@@ -308,14 +308,16 @@ provision_app() {
 
 wait_online() {
   wait_for 45 'prefs switched to good relay' prefs_contains "$GOOD_RELAY_URL"
-  wait_for 45 'AVD UI shows connected' ui_contains '状态：已连接 / device=phone'
+  wait_for 45 'AVD UI shows connected state' ui_contains '已连接'
+  wait_for 45 'AVD UI shows connected device' ui_contains 'device=phone'
   wait_for 45 'token store has phone entry' token_store_contains '"phone"'
 }
 
 wait_offline() {
   wait_for 45 'prefs switched to bad relay' prefs_contains "$BAD_RELAY_URL"
-  wait_for 45 'AVD UI shows disconnected bad relay' ui_contains '状态：未连接 / device=phone'
-  wait_for 45 'AVD UI records bad relay error' ui_contains "连接失败: Failed to connect to /10.0.2.2:${BAD_RELAY_PORT}"
+  wait_for 45 'AVD UI shows disconnected state' ui_contains '未连接'
+  wait_for 45 'AVD UI shows configured device while offline' ui_contains 'device=phone'
+  wait_for 45 'AVD UI records bad relay error' ui_contains "Failed to connect to /10.0.2.2:${BAD_RELAY_PORT}"
 }
 
 command_up() {
@@ -341,7 +343,8 @@ command_ws() {
   local body='websocket-path-alive'
   note "sending WebSocket notify title=$title"
   local_pb notify phone "$title" "$body" >/dev/null
-  wait_for 20 'UI log shows websocket notification' ui_contains "通知 from=laptop: $title"
+  wait_for 20 'recent activity prefs capture websocket title' prefs_contains "$title"
+  wait_for 20 'home timeline shows websocket notification title' ui_contains "$title"
   wait_for 20 'notification manager shows websocket title' notification_contains "$title"
   wait_for 20 'notification manager shows websocket body' notification_contains "$body"
   note 'websocket verification complete'
@@ -358,7 +361,8 @@ command_fcm() {
   note "sending offline notify title=$title"
   local_pb notify phone "$title" "$body" >/dev/null
   wait_for 20 'agent delivered offline FCM push' grep_file_contains "$AGENT_LOG" 'agent delivered offline push: target=phone provider=fcm kind=notify'
-  wait_for 20 'UI log shows FCM receipt' ui_contains "收到 FCM kind=notify from=laptop title=$title"
+  wait_for 20 'recent activity prefs capture offline title' prefs_contains "$title"
+  wait_for 20 'home timeline shows offline notification title' ui_contains "$title"
   wait_for 20 'notification manager shows FCM title' notification_contains "$title"
   wait_for 20 'notification manager shows FCM body' notification_contains "$body"
   note 'FCM verification complete'

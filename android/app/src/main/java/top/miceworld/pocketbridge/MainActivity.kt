@@ -5,18 +5,29 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.coroutines.launch
 import top.miceworld.pocketbridge.bridge.BridgeService
 import top.miceworld.pocketbridge.databinding.ActivityMainBinding
 
 class MainActivity : ComponentActivity() {
     private lateinit var binding: ActivityMainBinding
+
+    private val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.getDefault())
+        .withZone(ZoneId.systemDefault())
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -30,14 +41,28 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        applySystemBarAppearance()
 
+        BridgeRuntime.ensureLoaded(this)
         NotificationHelper.ensureChannels(this)
         PushBridge.fetchAndStoreToken(this)
         applyProvisionIntent(intent)
         requestNotificationPermissionIfNeeded()
-        bindInitialConfig()
+        bindToolbar()
+        bindInitialState()
+        bindBottomNavigation(savedInstanceState?.getInt(KEY_SELECTED_TAB) ?: R.id.nav_recent)
         bindActions()
         bindState()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        bindInitialState()
+    }
+
+    override fun onPause() {
+        saveConfigFromFields()
+        super.onPause()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -45,33 +70,66 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         applyProvisionIntent(intent)
         if (::binding.isInitialized) {
-            bindInitialConfig()
+            bindInitialState()
         }
     }
 
-    private fun bindInitialConfig() {
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(KEY_SELECTED_TAB, binding.bottomNavigation.selectedItemId)
+    }
+
+
+    private fun applySystemBarAppearance() {
+        val lightBars = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = lightBars
+            isAppearanceLightNavigationBars = lightBars
+        }
+    }
+
+    private fun bindToolbar() {
+        binding.topToolbar.title = getString(R.string.app_name)
+    }
+
+    private fun bindBottomNavigation(initialTab: Int) {
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            showTab(item.itemId)
+            true
+        }
+        binding.bottomNavigation.selectedItemId = initialTab
+        showTab(initialTab)
+    }
+
+    private fun bindInitialState() {
         val config = BridgePrefs.load(this)
+        BridgeRuntime.syncConfig(config)
+        binding.notifyTargetInput.setText(config.notifyTarget)
         binding.relayUrlInput.setText(config.relayUrl)
         binding.deviceIdInput.setText(config.deviceId)
         binding.privateKeyInput.setText(config.privateKeyBase64)
-        binding.notifyTargetInput.setText(config.notifyTarget)
+        renderActionTarget(config.notifyTarget)
     }
 
     private fun bindActions() {
+        binding.saveButton.setOnClickListener {
+            saveConfigFromFields()
+            BridgeRuntime.appendLog("已保存连接配置")
+        }
         binding.startButton.setOnClickListener {
-            saveConfig()
+            saveConfigFromFields()
             BridgeService.start(this)
         }
         binding.stopButton.setOnClickListener {
             BridgeService.stop(this)
         }
         binding.sendNotifyButton.setOnClickListener {
-            saveConfig()
+            saveConfigFromFields()
             BridgeService.sendNotify(
                 context = this,
-                target = binding.notifyTargetInput.text.toString().trim(),
-                title = binding.notifyTitleInput.text.toString().trim(),
-                body = binding.notifyBodyInput.text.toString().trim(),
+                target = binding.notifyTargetInput.text?.toString().orEmpty().trim(),
+                title = binding.notifyTitleInput.text?.toString().orEmpty().trim(),
+                body = binding.notifyBodyInput.text?.toString().orEmpty().trim(),
             )
         }
         binding.readClipboardButton.setOnClickListener {
@@ -79,21 +137,21 @@ class MainActivity : ComponentActivity() {
             BridgeRuntime.appendLog("已读取本机剪贴板到草稿区")
         }
         binding.writeClipboardButton.setOnClickListener {
-            writeLocalClipboardText(binding.clipboardDraftInput.text.toString())
+            writeLocalClipboardText(binding.clipboardDraftInput.text?.toString().orEmpty())
             BridgeRuntime.appendLog("已将草稿区写入本机剪贴板")
         }
         binding.pushClipboardButton.setOnClickListener {
-            saveConfig()
+            saveConfigFromFields()
             BridgeService.pushClipboard(
                 context = this,
-                target = binding.notifyTargetInput.text.toString().trim(),
+                target = binding.notifyTargetInput.text?.toString().orEmpty().trim(),
             )
         }
         binding.pullClipboardButton.setOnClickListener {
-            saveConfig()
+            saveConfigFromFields()
             BridgeService.pullClipboard(
                 context = this,
-                target = binding.notifyTargetInput.text.toString().trim(),
+                target = binding.notifyTargetInput.text?.toString().orEmpty().trim(),
             )
         }
     }
@@ -101,38 +159,165 @@ class MainActivity : ComponentActivity() {
     private fun bindState() {
         lifecycleScope.launch {
             BridgeRuntime.state.collect { state ->
-                val status = buildString {
-                    append("状态：")
-                    append(if (state.connected) "已连接" else "未连接")
-                    if (state.deviceId.isNotBlank()) {
-                        append(" / device=")
-                        append(state.deviceId)
-                    }
-                    if (state.relayUrl.isNotBlank()) {
-                        append("\nrelay=")
-                        append(state.relayUrl)
-                    }
-                    if (state.lastError.isNotBlank()) {
-                        append("\nlastError=")
-                        append(state.lastError)
-                    }
-                }
-                binding.statusText.text = status
-                binding.logText.text = state.logs.joinToString("\n")
+                renderConnectionState(state)
+                renderDiagnostics(state)
+                renderSettingsSummary(state)
+                renderRecentActivities(state.recentActivities)
             }
         }
     }
 
-    private fun saveConfig() {
-        BridgePrefs.save(
-            this,
-            BridgeConfig(
-                relayUrl = binding.relayUrlInput.text.toString().trim(),
-                deviceId = binding.deviceIdInput.text.toString().trim(),
-                privateKeyBase64 = binding.privateKeyInput.text.toString().trim(),
-                notifyTarget = binding.notifyTargetInput.text.toString().trim(),
-            ),
+    private fun showTab(itemId: Int) {
+        binding.recentTabScroll.isVisible = itemId == R.id.nav_recent
+        binding.actionsTabScroll.isVisible = itemId == R.id.nav_actions
+        binding.settingsTabScroll.isVisible = itemId == R.id.nav_settings
+        binding.topToolbar.subtitle = when (itemId) {
+            R.id.nav_actions -> getString(R.string.toolbar_subtitle_actions)
+            R.id.nav_settings -> getString(R.string.toolbar_subtitle_settings)
+            else -> getString(R.string.toolbar_subtitle_recent)
+        }
+    }
+
+    private fun renderConnectionState(state: UiState) {
+        binding.connectionStateText.text = if (state.connected) {
+            getString(R.string.status_connected_short)
+        } else {
+            getString(R.string.status_disconnected_short)
+        }
+        binding.connectionSummaryText.text = if (state.connected) {
+            getString(R.string.home_status_connected_summary)
+        } else {
+            getString(R.string.home_status_disconnected_summary)
+        }
+        binding.connectionMetaText.text = buildString {
+            if (state.deviceId.isNotBlank()) {
+                append("device=")
+                append(state.deviceId)
+            }
+            if (state.relayUrl.isNotBlank()) {
+                if (isNotEmpty()) {
+                    append('\n')
+                }
+                append("relay=")
+                append(state.relayUrl)
+            }
+            if (state.lastError.isNotBlank()) {
+                if (isNotEmpty()) {
+                    append('\n')
+                }
+                append("lastError=")
+                append(state.lastError)
+            }
+        }
+        binding.connectionMetaText.isVisible = binding.connectionMetaText.text.isNotBlank()
+    }
+
+    private fun renderDiagnostics(state: UiState) {
+        binding.diagnosticSummaryText.text = when {
+            state.lastError.isNotBlank() -> getString(R.string.diagnostic_last_error, state.lastError)
+            state.logs.isNotEmpty() -> getString(R.string.diagnostic_last_log, state.logs.last())
+            else -> getString(R.string.diagnostic_stable)
+        }
+    }
+
+    private fun renderSettingsSummary(state: UiState) {
+        binding.statusText.text = buildString {
+            append(if (state.connected) getString(R.string.status_connected_short) else getString(R.string.status_disconnected_short))
+            if (state.deviceId.isNotBlank()) {
+                append(" · device=")
+                append(state.deviceId)
+            }
+            if (state.relayUrl.isNotBlank()) {
+                append("\nrelay=")
+                append(state.relayUrl)
+            }
+            if (state.lastError.isNotBlank()) {
+                append("\nlastError=")
+                append(state.lastError)
+            }
+        }
+        binding.logText.text = state.logs.takeLast(30).reversed().joinToString("\n")
+            .ifBlank { getString(R.string.settings_logs_empty) }
+    }
+
+    private fun renderRecentActivities(entries: List<RecentActivityEntry>) {
+        binding.recentActivityContainer.removeAllViews()
+        val hasEntries = entries.isNotEmpty()
+        binding.recentActivityEmptyText.isVisible = !hasEntries
+        binding.recentActivityEmptyHintText.isVisible = !hasEntries
+        binding.recentActivityContainer.isVisible = hasEntries
+        if (!hasEntries) {
+            return
+        }
+
+        entries.forEach { entry ->
+            val itemView = layoutInflater.inflate(
+                R.layout.item_recent_activity,
+                binding.recentActivityContainer,
+                false,
+            )
+            itemView.findViewById<TextView>(R.id.activityKindText).text = buildActivityKindLabel(entry)
+            itemView.findViewById<TextView>(R.id.activityTimestampText).text = formatTimestamp(entry.timestampMs)
+            itemView.findViewById<TextView>(R.id.activityTitleText).text = entry.title
+
+            val bodyView = itemView.findViewById<TextView>(R.id.activityBodyText)
+            bodyView.text = entry.body
+            bodyView.isVisible = entry.body.isNotBlank()
+
+            val metaView = itemView.findViewById<TextView>(R.id.activityMetaText)
+            metaView.text = buildActivityMeta(entry)
+            metaView.isVisible = metaView.text.isNotBlank()
+
+            binding.recentActivityContainer.addView(itemView)
+        }
+    }
+
+    private fun buildActivityKindLabel(entry: RecentActivityEntry): String {
+        val primary = when (entry.kind) {
+            RecentActivityEntry.KIND_TASK -> getString(R.string.recent_activity_kind_task)
+            else -> getString(R.string.recent_activity_kind_notify)
+        }
+        val ingress = when (entry.ingress) {
+            RecentActivityEntry.INGRESS_FCM -> getString(R.string.recent_activity_ingress_fcm)
+            else -> getString(R.string.recent_activity_ingress_websocket)
+        }
+        return primary + getString(R.string.recent_activity_meta_joiner) + ingress
+    }
+
+    private fun buildActivityMeta(entry: RecentActivityEntry): String {
+        return if (entry.fromDeviceId.isBlank()) {
+            ""
+        } else {
+            getString(R.string.recent_activity_from, entry.fromDeviceId)
+        }
+    }
+
+
+    private fun renderActionTarget(target: String) {
+        binding.actionsTargetText.text = if (target.isBlank()) {
+            getString(R.string.actions_target_summary_missing)
+        } else {
+            getString(R.string.actions_target_summary, target)
+        }
+    }
+
+    private fun formatTimestamp(timestampMs: Long): String {
+        return runCatching {
+            timeFormatter.format(Instant.ofEpochMilli(timestampMs))
+        }.getOrElse { "" }
+    }
+
+    private fun saveConfigFromFields(): BridgeConfig {
+        val next = BridgeConfig(
+            relayUrl = binding.relayUrlInput.text?.toString().orEmpty().trim(),
+            deviceId = binding.deviceIdInput.text?.toString().orEmpty().trim(),
+            privateKeyBase64 = binding.privateKeyInput.text?.toString().orEmpty().trim(),
+            notifyTarget = binding.notifyTargetInput.text?.toString().orEmpty().trim(),
         )
+        BridgePrefs.save(this, next)
+        BridgeRuntime.syncConfig(next)
+        renderActionTarget(next.notifyTarget)
+        return next
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -170,6 +355,7 @@ class MainActivity : ComponentActivity() {
             notifyTarget = intent.getStringExtra(EXTRA_NOTIFY_TARGET)?.trim().takeUnless { it.isNullOrEmpty() } ?: current.notifyTarget,
         )
         BridgePrefs.save(this, next)
+        BridgeRuntime.syncConfig(next)
 
         if (intent.getBooleanExtra(EXTRA_AUTO_START, false)) {
             BridgeService.restart(this)
@@ -194,6 +380,8 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val KEY_SELECTED_TAB = "selected_tab"
+
         const val ACTION_PROVISION = "top.miceworld.pocketbridge.action.PROVISION"
         const val EXTRA_RELAY_URL = "relay_url"
         const val EXTRA_DEVICE_ID = "device_id"

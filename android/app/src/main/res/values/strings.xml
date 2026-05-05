@@ -1,14 +1,62 @@
 <resources>
     <string name="app_name">Pocket Bridge</string>
     <string name="status_disconnected">状态：未连接</string>
+    <string name="status_connected_short">已连接</string>
+    <string name="status_disconnected_short">未连接</string>
+
+    <string name="toolbar_subtitle_recent">通知历史与任务状态</string>
+    <string name="toolbar_subtitle_actions">手动通知与显式剪贴板</string>
+    <string name="toolbar_subtitle_settings">连接参数与恢复控制</string>
+
+    <string name="home_status_connected_summary">后台桥接当前在线，新的通知和任务状态会优先实时到达。</string>
+    <string name="home_status_disconnected_summary">后台桥接当前未连上 relay，但离线路径仍可通过 FCM 补发通知。</string>
+    <string name="section_route_target">默认目标</string>
+    <string name="notify_target_helper">手动通知与剪贴板动作默认发往这个目标。</string>
+    <string name="section_recent_activity">通知历史</string>
+    <string name="section_recent_activity_hint">来自 WebSocket 与 FCM 的通知、任务状态会持续写到这里。</string>
+    <string name="empty_recent_activity">还没有收到通知或任务状态</string>
+    <string name="empty_recent_activity_hint">保持服务运行后，新的后台推送会在这里留下记录。</string>
+
+    <string name="actions_target_summary">当前默认目标：%1$s</string>
+    <string name="actions_target_summary_missing">当前还没有默认目标，请先在动态页填写 notify target。</string>
+    <string name="section_notify">发送通知</string>
+    <string name="section_notify_hint">直接向当前目标发一条测试通知。</string>
+    <string name="clipboard_header">剪贴板</string>
+    <string name="section_clipboard_hint">读取本机草稿，或显式推送 / 拉取远端剪贴板。</string>
+
+    <string name="section_connection_config">连接配置</string>
+    <string name="section_connection_config_hint">这里只保留 relay、device 和私钥等高级参数。</string>
+    <string name="section_connection_controls">连接控制</string>
+    <string name="section_connection_controls_hint">需要恢复连接时，再从这里启动或停止前台服务。</string>
+    <string name="section_logs">运行日志</string>
+    <string name="section_logs_hint">最近的运行日志会保留在这里，方便排查 relay / FCM / clipboard 问题。</string>
+    <string name="settings_hint">高级配置、恢复控制与运行日志都收在这个标签页，不再挤占主页。</string>
+    <string name="settings_logs_empty">还没有运行日志</string>
+
+    <string name="nav_recent">动态</string>
+    <string name="nav_actions">操作</string>
+    <string name="nav_settings">设置</string>
+    <string name="action_save_settings">保存配置</string>
+
+    <string name="recent_activity_kind_notify">通知</string>
+    <string name="recent_activity_kind_task">任务</string>
+    <string name="recent_activity_ingress_websocket">WebSocket</string>
+    <string name="recent_activity_ingress_fcm">FCM</string>
+    <string name="recent_activity_from">来自 %1$s</string>
+    <string name="recent_activity_meta_joiner"> · </string>
+
+    <string name="diagnostic_last_error">最近错误：%1$s</string>
+    <string name="diagnostic_last_log">最近日志：%1$s</string>
+    <string name="diagnostic_stable">如需改 relay、重启服务或看详细日志，请切到设置标签页。</string>
+
     <string name="hint_relay_url">Relay URL，例如 ws://10.0.2.2:18080/ws</string>
     <string name="hint_device_id">Device ID，例如 phone</string>
     <string name="hint_private_key_base64">Private Key Base64 (PKCS8 DER)</string>
     <string name="hint_notify_target">通知目标，例如 laptop</string>
     <string name="hint_notify_title">通知标题</string>
     <string name="hint_notify_body">通知正文</string>
-    <string name="clipboard_header">剪贴板</string>
     <string name="hint_clipboard_draft">剪贴板草稿 / 预览</string>
+
     <string name="action_start">启动连接</string>
     <string name="action_stop">停止连接</string>
     <string name="action_send_notify">发送通知</string>
@@ -18,6 +66,7 @@
     <string name="action_push_clipboard">推送剪贴板到目标</string>
     <string name="action_pull_clipboard">从目标拉取剪贴板</string>
     <string name="copy_notification_toast">已复制到剪贴板</string>
+
     <string name="log_header">运行日志</string>
     <string name="service_channel_name">Pocket Bridge Service</string>
     <string name="service_channel_description">保持与 relay 的实时连接</string>

@@ -43,6 +43,7 @@ import top.miceworld.pocketbridge.BridgePrefs
 import top.miceworld.pocketbridge.BridgeRuntime
 import top.miceworld.pocketbridge.NotificationHelper
 import top.miceworld.pocketbridge.PushBridge
+import top.miceworld.pocketbridge.RecentActivityEntry
 import java.util.concurrent.TimeUnit
 
 class BridgeService : Service() {
@@ -416,6 +417,14 @@ class BridgeService : Service() {
                         val msg = env.notifyPush
                         val body = if (msg.body.isBlank()) "(empty)" else msg.body
                         BridgeRuntime.appendLog("通知 from=${env.fromDeviceId}: ${msg.title}")
+                        BridgeRuntime.recordIncomingNotify(
+                            context = this@BridgeService,
+                            title = msg.title,
+                            body = body,
+                            fromDeviceId = env.fromDeviceId,
+                            ingress = RecentActivityEntry.INGRESS_WEBSOCKET,
+                            timestampMs = env.unixMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                        )
                         NotificationHelper.showIncomingNotification(
                             this@BridgeService,
                             msg.title,
@@ -427,6 +436,15 @@ class BridgeService : Service() {
                         val title = "Codex ${msg.kind}: ${msg.title}"
                         val body = msg.summary
                         BridgeRuntime.appendLog("任务状态 from=${env.fromDeviceId}: ${msg.kind} ${msg.title}")
+                        BridgeRuntime.recordIncomingTask(
+                            context = this@BridgeService,
+                            taskKind = msg.kind,
+                            title = msg.title,
+                            summary = body,
+                            fromDeviceId = env.fromDeviceId,
+                            ingress = RecentActivityEntry.INGRESS_WEBSOCKET,
+                            timestampMs = env.unixMs.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                        )
                         NotificationHelper.showIncomingNotification(
                             this@BridgeService,
                             title,
