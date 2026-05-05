@@ -230,6 +230,74 @@ func exitErr(err error) {
 func zshCompletionScript() string {
 	return `#compdef pb
 
+_pb_target_candidates() {
+  local config token_store
+  local -a candidates
+  local -a config_paths token_stores
+
+  config_paths=(
+    "/etc/pocket-bridge/agentd-${USER}.json"
+    "${XDG_CONFIG_HOME:-${HOME}/.config}/pocket-bridge/agentd.json"
+    /etc/pocket-bridge/agentd-*.json(N)
+  )
+
+  for config in ${config_paths}; do
+    [[ -r "$config" ]] || continue
+    candidates+=(${(f)"$(python3 - "$config" <<'PY'
+import json, sys
+path = sys.argv[1]
+try:
+    data = json.load(open(path, 'r', encoding='utf-8'))
+except Exception:
+    raise SystemExit(0)
+out = []
+targets = data.get('targets') or {}
+for key, value in targets.items():
+    if isinstance(key, str) and key.strip():
+        out.append(key.strip())
+    if isinstance(value, str) and value.strip():
+        out.append(value.strip())
+for item in out:
+    print(item)
+PY
+)"})
+    token_store="$(python3 - "$config" <<'PY'
+import json, sys
+path = sys.argv[1]
+try:
+    data = json.load(open(path, 'r', encoding='utf-8'))
+except Exception:
+    raise SystemExit(0)
+fcm = data.get('fcm') or {}
+path = fcm.get('token_store_path')
+if isinstance(path, str) and path.strip():
+    print(path.strip())
+PY
+)"
+    [[ -n "$token_store" ]] && token_stores+=("${~token_store}")
+  done
+
+  token_stores+=("${XDG_STATE_HOME:-${HOME}/.local/state}/pocket-bridge/fcm-tokens.json")
+  for token_store in ${(u)token_stores}; do
+    [[ -r "$token_store" ]] || continue
+    candidates+=(${(f)"$(python3 - "$token_store" <<'PY'
+import json, sys
+path = sys.argv[1]
+try:
+    data = json.load(open(path, 'r', encoding='utf-8'))
+except Exception:
+    raise SystemExit(0)
+for key in data.keys():
+    if isinstance(key, str) and key.strip():
+        print(key.strip())
+PY
+)"})
+  done
+
+  candidates+=(phone laptop phone_avd)
+  print -l ${(u)candidates}
+}
+
 _pb() {
   local -a commands kinds clip_actions shells
   local cmd=""
@@ -292,7 +360,7 @@ _pb() {
           ;;
         notify)
           case $arg_index in
-            1) _message 'target device' ;;
+            1) _describe -t targets 'target device' ${(@f)$(_pb_target_candidates)} ;;
             2) _message 'notification title' ;;
             *) _message 'notification body' ;;
           esac
@@ -306,13 +374,13 @@ _pb() {
           case "${words[cmd_index + 1]}" in
             push)
               case $arg_index in
-                2) _message 'target device' ;;
+                2) _describe -t targets 'target device' ${(@f)$(_pb_target_candidates)} ;;
                 *) _message 'clipboard text' ;;
               esac
               ;;
             pull)
               if (( arg_index == 2 )); then
-                _message 'target device'
+                _describe -t targets 'target device' ${(@f)$(_pb_target_candidates)}
               fi
               ;;
           esac
