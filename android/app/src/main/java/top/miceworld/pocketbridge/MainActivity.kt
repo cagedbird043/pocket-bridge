@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
         bindToolbar()
         bindTargetDropdown()
         bindInitialState()
+        ensureBridgeAutoConnect()
         bindBottomNavigation(savedInstanceState?.getInt(KEY_SELECTED_TAB) ?: R.id.nav_recent)
         bindActions()
         bindState()
@@ -76,6 +77,7 @@ class MainActivity : ComponentActivity() {
         applyProvisionIntent(intent)
         if (::binding.isInitialized) {
             bindInitialState()
+            ensureBridgeAutoConnect()
         }
     }
 
@@ -378,6 +380,11 @@ class MainActivity : ComponentActivity() {
         BridgeRuntime.syncConfig(next)
         renderActionTarget(next.notifyTarget)
         return next
+    }
+
+    private fun ensureBridgeAutoConnect() {
+        saveConfigFromFields()
+        BridgeService.ensureRunning(this)
     }
 
     private fun requestNotificationPermissionIfNeeded() {

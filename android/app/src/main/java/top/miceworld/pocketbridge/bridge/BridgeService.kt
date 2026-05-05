@@ -74,6 +74,7 @@ class BridgeService : Service() {
         when (intent?.action) {
             ACTION_STOP -> stopBridge()
             ACTION_RESTART -> restartBridge()
+            ACTION_ENSURE -> startBridge(quietIfRunning = true)
             ACTION_SEND_NOTIFY -> sendNotify(
                 target = intent.getStringExtra(EXTRA_TARGET).orEmpty(),
                 title = intent.getStringExtra(EXTRA_TITLE).orEmpty(),
@@ -104,12 +105,14 @@ class BridgeService : Service() {
         stopBridge()
     }
 
-    private fun startBridge() {
+    private fun startBridge(quietIfRunning: Boolean = false) {
         val config = BridgePrefs.load(this)
         currentConfig = config
         PushBridge.fetchAndStoreToken(this)
         if (running) {
-            BridgeRuntime.appendLog("服务已在运行")
+            if (!quietIfRunning) {
+                BridgeRuntime.appendLog("服务已在运行")
+            }
             return
         }
         running = true
@@ -573,6 +576,7 @@ class BridgeService : Service() {
     companion object {
         private const val ALGORITHM_ED25519 = "ed25519"
         private const val ACTION_START = "top.miceworld.pocketbridge.action.START"
+        private const val ACTION_ENSURE = "top.miceworld.pocketbridge.action.ENSURE"
         private const val ACTION_RESTART = "top.miceworld.pocketbridge.action.RESTART"
         private const val ACTION_STOP = "top.miceworld.pocketbridge.action.STOP"
         private const val ACTION_SEND_NOTIFY = "top.miceworld.pocketbridge.action.SEND_NOTIFY"
@@ -584,6 +588,11 @@ class BridgeService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, BridgeService::class.java).setAction(ACTION_START)
+            context.startForegroundService(intent)
+        }
+
+        fun ensureRunning(context: Context) {
+            val intent = Intent(context, BridgeService::class.java).setAction(ACTION_ENSURE)
             context.startForegroundService(intent)
         }
 
