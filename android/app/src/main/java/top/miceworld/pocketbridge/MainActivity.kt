@@ -12,8 +12,11 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
+import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import java.time.Instant
 import java.time.ZoneId
@@ -42,6 +45,7 @@ class MainActivity : ComponentActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         applySystemBarAppearance()
+        applyWindowInsets()
 
         BridgeRuntime.ensureLoaded(this)
         NotificationHelper.ensureChannels(this)
@@ -79,6 +83,18 @@ class MainActivity : ComponentActivity() {
         outState.putInt(KEY_SELECTED_TAB, binding.bottomNavigation.selectedItemId)
     }
 
+
+    private fun applyWindowInsets() {
+        val toolbarTop = binding.topToolbar.paddingTop
+        val bottomNavBottom = binding.bottomNavigation.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            binding.topToolbar.updatePadding(top = toolbarTop + systemBars.top)
+            binding.bottomNavigation.updatePadding(bottom = bottomNavBottom + systemBars.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(binding.root)
+    }
 
     private fun applySystemBarAppearance() {
         val lightBars = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES
