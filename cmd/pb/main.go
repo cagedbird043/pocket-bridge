@@ -298,11 +298,19 @@ PY
   print -l ${(u)candidates}
 }
 
+_pb_complete_targets() {
+  local -a targets
+  targets=(${(f)"$(_pb_target_candidates)"})
+  if (( ${#targets} == 0 )); then
+    _message 'target device'
+    return
+  fi
+  _values 'target device' ${targets}
+}
+
 _pb() {
-  local -a commands kinds clip_actions shells
-  local cmd=""
-  local cmd_index=0
-  local arg_index=0
+  local -a commands kinds clip_actions shells positionals
+  local cmd="" clip_action=""
   local i
 
   commands=(
@@ -327,83 +335,85 @@ _pb() {
     'zsh:zsh completion'
   )
 
-  _arguments -C \
-    '--socket[agent unix socket path]:socket path:_files' \
-    '1:command:->command' \
-    '*::arg:->args'
+  if [[ "${words[CURRENT-1]}" == "--socket" ]]; then
+    _files
+    return
+  fi
 
-  case $state in
-    command)
-      _describe -t commands 'pb command' commands
+  if [[ "${words[CURRENT]}" == --* ]]; then
+    _values 'pb option' --socket
+    return
+  fi
+
+  for (( i = 2; i < CURRENT; i++ )); do
+    case "${words[i]}" in
+      --socket)
+        (( i++ ))
+        ;;
+      -*)
+        ;;
+      *)
+        positionals+=("${words[i]}")
+        ;;
+    esac
+  done
+
+  if (( ${#positionals} == 0 )); then
+    _describe -t commands 'pb command' commands
+    return
+  fi
+
+  cmd="${positionals[1]}"
+
+  case "$cmd" in
+    keygen|status)
       return
       ;;
-    args)
-      for (( i = 2; i < CURRENT; i++ )); do
-        case "${words[i]}" in
-          --socket)
-            (( i++ ))
-            ;;
-          -*)
-            ;;
-          *)
-            cmd="${words[i]}"
-            cmd_index=$i
-            break
-            ;;
-        esac
-      done
-      (( arg_index = CURRENT - cmd_index ))
-
-      case "$cmd" in
-        keygen|status)
-          return
-          ;;
-        notify)
-          case $arg_index in
-            1) _describe -t targets 'target device' ${(@f)$(_pb_target_candidates)} ;;
-            2) _message 'notification title' ;;
-            *) _message 'notification body' ;;
+    notify)
+      case ${#positionals} in
+        1) _pb_complete_targets ;;
+        2) _message 'notification title' ;;
+        *) _message 'notification body' ;;
+      esac
+      return
+      ;;
+    clip)
+      if (( ${#positionals} == 1 )); then
+        _describe -t clip_actions 'clipboard action' clip_actions
+        return
+      fi
+      clip_action="${positionals[2]}"
+      case "$clip_action" in
+        push)
+          case ${#positionals} in
+            2) _pb_complete_targets ;;
+            *) _message 'clipboard text' ;;
           esac
-          return
           ;;
-        clip)
-          if (( arg_index == 1 )); then
-            _describe -t clip_actions 'clipboard action' clip_actions
-            return
+        pull)
+          if (( ${#positionals} == 2 )); then
+            _pb_complete_targets
           fi
-          case "${words[cmd_index + 1]}" in
-            push)
-              case $arg_index in
-                2) _describe -t targets 'target device' ${(@f)$(_pb_target_candidates)} ;;
-                *) _message 'clipboard text' ;;
-              esac
-              ;;
-            pull)
-              if (( arg_index == 2 )); then
-                _describe -t targets 'target device' ${(@f)$(_pb_target_candidates)}
-              fi
-              ;;
-          esac
-          return
-          ;;
-        task)
-          if (( arg_index == 1 )); then
-            _describe -t task_kinds 'task status' kinds
-            return
-          fi
-          case $arg_index in
-            2) _message 'task title' ;;
-            *) _message 'task summary' ;;
-          esac
-          return
-          ;;
-        completion)
-          if (( arg_index == 1 )); then
-            _describe -t shells 'shell' shells
-          fi
-          return
           ;;
       esac
+      return
+      ;;
+    task)
+      if (( ${#positionals} == 1 )); then
+        _describe -t task_kinds 'task status' kinds
+        return
+      fi
+      case ${#positionals} in
+        2) _message 'task title' ;;
+        *) _message 'task summary' ;;
+      esac
+      return
+      ;;
+    completion)
+      if (( ${#positionals} == 1 )); then
+        _describe -t shells 'shell' shells
+      fi
+      return
       ;;
   esac
 }
